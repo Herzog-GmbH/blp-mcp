@@ -1,0 +1,7 @@
+[
+  ["blp_whoami", {}],
+  ["blp_processes", {"filter": "Rechnung"}],
+  ["blp_tabs", {}],
+  ["blp_selection", {}],
+  ["blp_images", {"filter": "rechnung"}]
+]

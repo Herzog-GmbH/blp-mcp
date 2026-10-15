@@ -1,0 +1,16 @@
+# Zugangsdaten / lokale Konfiguration - NIEMALS committen
+config.local.json
+config.local.json.*
+*.local.json
+blp-credential*.xml
+*.secret.json
+*.pw
+
+# Laufzeitdaten (Sicherungen, Protokoll) - liegen normalerweise unter %LOCALAPPDATA%\blp-mcp
+sicherung/
+protokoll-*.jsonl
+*.log
+
+# Testlaeufe
+aufrufe*.json
+__pycache__/

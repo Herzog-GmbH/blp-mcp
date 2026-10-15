@@ -1,0 +1,54 @@
+{
+  "_hinweis": "Vorlage fuer config.local.json. Kopieren nach config.local.json (neben blp-mcp.ps1) und die HIER_...-Platzhalter ausfuellen. config.local.json bleibt lokal (siehe .gitignore) und wird NIE committet. Relative Pfade gelten relativ zu dieser Datei.",
+
+  "organization": "",
+  "_hinweis_organization": "Optional. Erscheint in den Anweisungen an die KI, z. B. 'Muster GmbH'.",
+
+  "extraInstructions": "",
+  "_hinweis_extraInstructions": "Optional. Freitext, der an die Anweisungen fuer die KI angehaengt wird, z. B. Hausregeln oder Verweise auf andere MCP-Server.",
+
+  "defaultEnvironment": "test",
+  "_hinweis_defaultEnvironment": "Umgebung, die ohne -Umgebung startet. Fuer weitere Umgebungen den Server ein zweites Mal registrieren, z. B. als blp-prod mit -Umgebung produktiv.",
+
+  "skipCertificateCheck": false,
+  "_hinweis_skipCertificateCheck": "true nur, wenn der BLP ein selbstsigniertes Zertifikat hat, das dieser Rechner nicht kennt. Besser: das Zertifikat bzw. die interne CA vertrauenswuerdig machen. Kann je Umgebung ueberschrieben werden.",
+
+  "environments": {
+    "test": {
+      "label": "Test",
+      "authUrl": "https://HIER_BLP_SERVER:40001",
+      "projectUrl": "https://HIER_BLP_SERVER:40002",
+      "clientUrl": "https://HIER_BLP_SERVER:40009",
+      "projectId": "HIER_PROJEKT_ID",
+      "credentialFile": "blp-credential-test.xml",
+      "allowChanges": true,
+      "_hinweis": "authUrl = Identity-Dienst (Login), projectUrl = Projektdienst (Designer-API), clientUrl = Client-Dienst (was die Sidebar ausliefert). Die Ports haengen von eurer Installation ab. projectId = 24-stellige ID des Designer-Projekts (steht im Designer in der Adresszeile bzw. unter <projectUrl>/api/v1/project). credentialFile legt Set-BlpCredential.ps1 an. allowChanges = aendernde Werkzeuge frei."
+    },
+    "produktiv": {
+      "label": "Produktiv",
+      "authUrl": "https://HIER_BLP_SERVER:30001",
+      "projectUrl": "https://HIER_BLP_SERVER:30002",
+      "clientUrl": "https://HIER_BLP_SERVER:30009",
+      "projectId": "HIER_PROJEKT_ID",
+      "credentialFile": "blp-credential.xml",
+      "allowChanges": false,
+      "_hinweis": "Produktiv standardmaessig nur lesen. Freischalten nur bewusst: allowChanges true oder Startschalter -AendernErlauben."
+    }
+  },
+
+  "images": {
+    "_hinweis": "Optional. package = Name des Bildpakets im Designer (Standard 'Default'). iconDir = Ordner mit eigenen Symbolen als <farbe>\\<motiv>_<24|32|64>.png fuer blp_image_upload mit motiv. containers = welcher Container des Bildpakets zu welcher farbe gehoert (Name wie im Designer).",
+    "package": "Default",
+    "iconDir": "",
+    "containers": {
+      "weiss": "",
+      "dunkel": ""
+    }
+  },
+
+  "dataDir": "",
+  "_hinweis_dataDir": "Optional. Ordner fuer Sicherungen vor jeder Aenderung und das Protokoll. Standard: %LOCALAPPDATA%\\blp-mcp.",
+
+  "clientSystemId": "IoSidebarWebClient",
+  "_hinweis_clientSystemId": "Header X-CLIENT-SYSTEM-ID, den auch der Designer schickt. Nur aendern, wenn euer BLP etwas anderes erwartet."
+}
