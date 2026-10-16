@@ -245,7 +245,7 @@ function ZweiSchritte([string] $name, $a, [scriptblock] $pruefen, [scriptblock] 
   if (-not $p) { throw "freigabe unbekannt oder schon benutzt. Bitte neue Vorschau holen (Aufruf ohne freigabe)." }
   if ($p.ablauf -lt $jetzt) { throw "freigabe abgelaufen. Bitte neue Vorschau holen." }
   if ($p.name -ne $name -or $p.key -ne $key) { throw "Argumente weichen von der Vorschau ab. Bitte neue Vorschau holen." }
-  if ($p.fp -ne $plan.fp) { throw "Der Baustein hat sich seit der Vorschau geaendert (Version/Zeitstempel). Bitte neue Vorschau holen." }
+  if ($p.fp -ne $plan.fp) { throw "Der Baustein (oder die Bauplan-Datei) hat sich seit der Vorschau geaendert. Bitte neue Vorschau holen." }
   try { $res = & $ausfuehren $plan }
   catch { Protokoll ([ordered]@{ werkzeug = $name; argumente = $ohne; fehler = "$($_.Exception.Message)" }); throw }
   Protokoll ([ordered]@{ werkzeug = $name; argumente = $ohne; ergebnis = $res })

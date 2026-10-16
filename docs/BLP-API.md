@@ -31,7 +31,25 @@ Jeder Aufruf braucht `Authorization: Bearer <token>` und `X-CLIENT-SYSTEM-ID: Io
 | `dataquerymanager/load/items` | alle Datenabfragen |
 | `module/<Modul-ID>` | Modulkonfiguration (siehe Fallen) |
 
-Die Prozessor-Liste eines Moduls (also die Namen der Bausteine in einem Prozess) liegt **nicht** unter dem Projekt, sondern am Projektdienst unter `GET /api/v1/module/<Modul-ID>`. Prozessknoten haben selbst keinen Namen, nur `description` und `processor_id`.
+Die Prozessor-Liste eines Moduls (also die Namen der Bausteine in einem Prozess) liegt **nicht** unter dem Projekt, sondern am Projektdienst unter `GET /api/v1/module/<Modul-ID>`. Alle Module mit ihren Prozessoren auf einmal: `GET /api/v1/module` → `{modules: [{module_id, name, processors: [{info: {id, name, display_text}, input_ports: [{id}], output_ports: [{id}]}]}]}`. Prozessknoten haben selbst keinen Namen, nur `description` und `processor_id`.
+
+## Prozessdefinition
+
+```json
+{ "internal_id": "00000000-…", "type": 1, "name": "…", "folder": "<Ordner-ID>",
+  "nodes": [ { "id": "<GUID>", "offset": {"x": 15, "y": 15}, "module_id": "<Modul>", "processor_id": "<Prozessor>",
+               "description": "", "parameters": { "Module.Core.Decision.Config": "{\"Content\":\"…\"}" },
+               "fields": ["…"], "has_config_errors": false } ],
+  "connectors": [ { "source_node": "<GUID>", "source_port": "<GUID>.output_true",
+                    "target_node": "<GUID>", "target_port": "<GUID>.input", "comment": "" } ],
+  "childs": null, "options": { "viewport": "{\"x\":0,\"y\":0,\"zoom\":1}" } }
+```
+
+- **Startknoten:** `id`, `module_id` und `processor_id` sind die Null-GUID, Ausgang `START`, `parameters` meist `{}` (manchmal `{"config": "{\"create_report\":true}"}`).
+- **Ports:** `source_port` ist `<Knoten-ID>.<Ausgang>`, `target_port` immer `<Knoten-ID>.input`. Ausgänge je Prozessor stehen in `output_ports` (z. B. Decision `output_true`/`output_false`, Multi Decision `Port 1` … `Default`, End Process keiner). In vorhandenen Prozessen führt jeder Ausgang zu genau einem Ziel.
+- **`fields`** (optional) sind die Ausgabefelder eines Knotens, z. B. die Feldnamen eines Eingabeformulars oder `ELO.AS.*` beim ELOas-Aufruf. Der Designer setzt sie beim Speichern eines Knotens.
+- **`parameters` kann `null` sein** (z. B. File Upload ohne Einstellungen).
+- **Typ** des Prozesses kommt vom Ordner: Prozessordner in `GET processengine` haben `type` (0 Server, 1 Client).
 
 ## Ändern: checkout → speichern → commit
 
@@ -41,7 +59,7 @@ Die Prozessor-Liste eines Moduls (also die Namen der Bausteine in einem Prozess)
 4. `POST <Baustein>/<id>/commit` mit `{"_read_token": …}` – die Version springt auf die nächste Hauptnummer.
 5. Bei Fehlern: `POST <Baustein>/<id>/undo` gibt die Arbeitskopie frei.
 
-Neu anlegen: `PUT processengine` mit der ganzen Prozessdefinition (`internal_id` = Null-GUID, `type`, `name`, `folder`, `nodes`, `connectors`, `childs`, `options`), `PUT client/sidebar/tab/action` mit dem Tab samt `tiles[]`. Löschen: `DELETE <Baustein>/<id>` mit Kopfzeile `X-READ-TOKEN`.
+Neu anlegen: `PUT processengine` mit der ganzen Prozessdefinition (`internal_id` = Null-GUID, `type`, `name`, `folder`, `nodes`, `connectors`, `childs`, `options`) – der neue Prozess ist danach Version 1.0 und nicht gesperrt. `PUT client/sidebar/tab/action` mit dem Tab samt `tiles[]`. `PUT objectmanager` mit dem Objekt (ohne `_id`/`internal_id`, der Dienst vergibt beide): das neue Objekt ist danach **noch ausgecheckt** (`_locked`, Version 1.0) und wird erst mit `POST objectmanager/<id>/commit` (Lesetoken aus dem GET) festgeschrieben (Version 2.0). Löschen: `DELETE <Baustein>/<id>` mit Kopfzeile `X-READ-TOKEN`.
 
 Fehlerbilder beim Speichern:
 
@@ -60,6 +78,10 @@ Fehlerbilder beim Speichern:
 - **Der Dienst lässt `false` und leere Listen beim Speichern weg** (z. B. `include: false` im Auswahlbaum, `tiles: []` bei einem neuen Tab). Fehlt ein Schlüssel, gilt er als `false`/leer. Zum Anhängen an eine fehlende Liste muss sie neu angelegt werden.
 - **Neuer Tab = in allen Rollen sichtbar.** Beim Anlegen trägt der BLP den Tab in jede Rolle mit Situation ein, `include: true`.
 - **Gelöschter Tab hinterlässt Rollen-Einträge** (`action_tabs` mit der alten ID). Aufräumen erst **nach** dem Löschen: Solange der Tab existiert, trägt der Dienst ihn beim Speichern einer Rolle wieder ein.
+- **Neues Geschäftsobjekt = in allen Rollen sichtbar.** Beim Festschreiben trägt der Dienst es in `situations[].objects[]` jeder Rolle ein (`object_id`, `include: true`). Anders als bei Tabs entfernt das Löschen des Objekts diese Einträge wieder.
+- **Ausgecheckte Bausteine bleiben ausgecheckt:** `_locked`, `_locked_by_user`, `_locked_on` zeigen, wer einen Baustein seit wann bearbeitet. Ein im Designer offen gelassener oder abgebrochener Bearbeitungsstand kann Monate stehen bleiben.
+- **`type` und `Type` im selben Parameter:** Setter-Konfigurationen enthalten beide Schlüssel (`"type": 2, "Type": 4`). In PowerShell lässt sich so ein JSON nur als Hashtable lesen (`ConvertFrom-Json -AsHashtable`), nicht als Objekt.
+- **Verwaiste Verbindungen:** `connectors` kann Einträge zu Knoten enthalten, die es im Prozess nicht mehr gibt. Der Designer zeigt sie nicht an.
 - **Designer- und Client-Stand unterscheiden sich:** Im Designer ist `action_tabs[].tab_id` die Tab-ID, im veröffentlichten Stand am Client-Dienst der Tab-Name. Die Zuordnung Gruppe/Benutzer → Rolle kennt nur der Client-Dienst.
 - **Kachelfarben und Hover:** Die `color_id`-Werte stehen am Client-Dienst unter `/api/v1/theme/sidebar/tiles/colors`. Einige Farben haben beim Darüberfahren einen weißen Hintergrund (`background_hover`) – weiße Symbole verschwinden dann. Vor der Wahl einer Farbe für weiße Symbole `background_hover` prüfen.
 - **Auswahlbaum:** `client/selection` (`layers` Bereich/Dokument, `selections[].childs[]` mit `process` und `fields`) steht hinter `Selection: "Bereich;Dokument"` in Prozessstarter-Kacheln und hinter `Client.exe SELECTION=…`.

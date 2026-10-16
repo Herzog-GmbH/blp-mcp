@@ -47,7 +47,7 @@
   },
 
   "dataDir": "",
-  "_hinweis_dataDir": "Optional. Ordner fuer Sicherungen vor jeder Aenderung und das Protokoll. Standard: %LOCALAPPDATA%\\blp-mcp.",
+  "_hinweis_dataDir": "Optional. Ordner fuer Sicherungen vor jeder Aenderung, das Protokoll und exportierte Bauplaene. Standard: %LOCALAPPDATA%\\blp-mcp.",
 
   "clientSystemId": "IoSidebarWebClient",
   "_hinweis_clientSystemId": "Header X-CLIENT-SYSTEM-ID, den auch der Designer schickt. Nur aendern, wenn euer BLP etwas anderes erwartet."

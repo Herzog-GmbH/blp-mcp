@@ -38,7 +38,7 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $utf8
 $STDOUT = [Console]::Out
 
-$VERSION = "0.4.0"
+$VERSION = "0.5.0"
 $MAX_TEXT = 60000
 
 function Log([string] $m) { [Console]::Error.WriteLine("[blp-mcp] $m") }
@@ -359,6 +359,7 @@ Werkzeug "blp_get" "Beliebiger lesender GET am Projektdienst (Pfad relativ zum P
 
 . (Join-Path $PSScriptRoot "blp-mcp-aendern.ps1")
 . (Join-Path $PSScriptRoot "blp-mcp-bilder.ps1")
+. (Join-Path $PSScriptRoot "blp-mcp-bauen.ps1")
 
 # ---------- Protokoll ----------
 

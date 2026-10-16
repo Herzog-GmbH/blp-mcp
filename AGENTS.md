@@ -92,7 +92,8 @@ Zugangsdaten dafür: `.\Set-BlpCredential.ps1 -Umgebung produktiv` (Mensch).
 | HTTP 401 oder „User is not authorized“ | Konto ohne Designer-Rechte oder falsches Passwort – Schritt 2 wiederholen |
 | HTTP 404 „page not found“ bei `/api/...` aus Git Bash | Git Bash wandelt `/api/...` in Windows-Pfade um: `MSYS_NO_PATHCONV=1` setzen |
 | „Aendern ist in der Umgebung … gesperrt“ | gewollt: `allowChanges` ist `false`. Nur der Mensch entscheidet, das zu ändern |
-| „Der Baustein hat sich seit der Vorschau geaendert“ | jemand hat inzwischen im Designer gespeichert: neue Vorschau holen |
+| „Der Baustein (oder die Bauplan-Datei) hat sich seit der Vorschau geaendert“ | jemand hat inzwischen im Designer gespeichert oder die Bauplan-Datei wurde geändert: neue Vorschau holen |
+| „Bauplan fehlerhaft: …“ | `blp_process_build` hat den Bauplan geprüft und abgelehnt; jede Zeile nennt Knoten oder Verbindung und den Grund |
 | Server startet nicht, Client meldet „failed“ | `pwsh` nicht im PATH, Skripte gesperrt (Schritt 0) oder Syntaxfehler nach eigenen Änderungen: `python -I test-blp-mcp.py` zeigt die Fehlerausgabe |
 
 ## Mit dem Server arbeiten
@@ -101,4 +102,6 @@ Zugangsdaten dafür: `.\Set-BlpCredential.ps1 -Umgebung produktiv` (Mensch).
 - Kachel-, Prozess- und Tab-Namen sind oft mehrdeutig. Kommt „mehrdeutig“ zurück, nimm die ID aus der Liste.
 - Ein neuer Tab steht sofort in **allen** Rollen auf sichtbar. Weise den Menschen darauf hin und blende ihn mit `blp_change` (`baustein: role`, Pfad `situations/0/action_tabs/[tab_id=<ID>]/include`, Wert `false`) dort aus, wo er nicht hingehört.
 - Wird ein Tab gelöscht (im Designer), bleiben seine Einträge in den Rollen stehen. Aufräumen mit `blp_change … aktion entfernen`, aber erst **nach** dem Löschen.
+- Ein neues Geschäftsobjekt (`blp_create_object`) steht ebenfalls sofort in allen Rollen auf sichtbar; abwählen mit `blp_change` (`baustein: role`, Pfad `situations/0/objects/[object_id=<ID>]/include`, Wert `false`).
+- Prozesse umbauen oder neu bauen: erst `blp_process_export` (Bauplan), dann den Bauplan ändern und mit `blp_process_build` bauen – als Kopie mit `name`, als Ersatz mit `prozess`. Große Baupläne kommen als Datei; die Datei weiterreichen (`datei`) statt den Bauplan abzuschreiben. Einen Bauplan aus einer Antwort mit `***` nie zurückschreiben. Welche Bausteine und Ausgänge es gibt, zeigt `blp_process_export` ohne `prozess`.
 - Mehr Eigenheiten der API: [`docs/BLP-API.md`](docs/BLP-API.md).
