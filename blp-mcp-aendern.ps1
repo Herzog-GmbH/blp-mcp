@@ -14,8 +14,9 @@
 # (keine null in Listen, Prozessparameter nur Text) -> Speichern (POST) -> commit -> Nachlesen.
 # Bei Fehler nach dem checkout: undo. Veroeffentlichen macht ein Mensch im Designer, nicht der MCP.
 
-# Freischaltung je Umgebung ("allowChanges" in der Konfiguration) oder per Schalter -AendernErlauben.
-$AENDERN_ERLAUBT = [bool] (($K -and $K.aendernErlaubt) -or $AendernErlauben)
+# Freischaltung je Umgebung ("allowChanges" in der Konfiguration) oder per Schalter -AendernErlauben;
+# bei mehreren Umgebungen setzt Setze-Umgebung den Wert vor jedem Aufruf neu.
+$AENDERN_ERLAUBT = Erlaubt $K
 $DATEN = if ($K) { $K.datenOrdner } else { Join-Path ([IO.Path]::GetTempPath()) "blp-mcp" }
 $SICHERUNG = Join-Path $DATEN "sicherung"
 $script:Pending = @{}
@@ -228,7 +229,7 @@ function SortiertJson($o) {
 }
 
 function ZweiSchritte([string] $name, $a, [scriptblock] $pruefen, [scriptblock] $ausfuehren) {
-  if (-not $AENDERN_ERLAUBT) { throw "Aendern ist in der Umgebung $UMGEBUNG gesperrt (allowChanges in der Konfiguration oder Schalter -AendernErlauben; das entscheidet ein Mensch)." }
+  if (-not $AENDERN_ERLAUBT) { throw "Aendern ist in der Umgebung $UMGEBUNG gesperrt (allowChanges in der Konfiguration$(if (-not $MEHRERE) { " oder Schalter -AendernErlauben" }), beim Paket fuer Claude Desktop der Schalter in den Einstellungen; das entscheidet ein Mensch)." }
   $ohne = [ordered]@{}; foreach ($p in $a.PSObject.Properties) { if ($p.Name -ne "freigabe") { $ohne[$p.Name] = $p.Value } }
   $key = JStr (SortiertJson $ohne)
   $plan = & $pruefen
@@ -236,7 +237,7 @@ function ZweiSchritte([string] $name, $a, [scriptblock] $pruefen, [scriptblock] 
   if (-not $a.freigabe) {
     foreach ($t in @($script:Pending.Keys)) { if ($script:Pending[$t].ablauf -lt $jetzt) { $script:Pending.Remove($t) } }
     $tok = ([guid]::NewGuid().ToString()).Substring(0, 13)
-    $script:Pending[$tok] = @{ name = $name; key = $key; fp = $plan.fp; ablauf = $jetzt + $TOKEN_SEK }
+    $script:Pending[$tok] = @{ name = $name; key = $key; fp = $plan.fp; ablauf = $jetzt + $TOKEN_SEK; umgebung = $UMGEBUNG_NAME }
     # Feld heisst "freigabe", nicht "token": Maskiere blendet alles mit "token" im Namen aus.
     return [ordered]@{ modus = "Vorschau - noch nichts geaendert"; vorschau = $plan.vorschau; warnungen = @(L $plan.warnungen); freigabe = $tok
       naechsterSchritt = "Vorschau dem Anwender zeigen. Nach Zustimmung dasselbe Werkzeug mit denselben Argumenten und freigabe=`"$tok`" aufrufen. Gueltig 5 Minuten, einmal." }
@@ -244,6 +245,7 @@ function ZweiSchritte([string] $name, $a, [scriptblock] $pruefen, [scriptblock] 
   $p = $script:Pending["$($a.freigabe)"]; $script:Pending.Remove("$($a.freigabe)")
   if (-not $p) { throw "freigabe unbekannt oder schon benutzt. Bitte neue Vorschau holen (Aufruf ohne freigabe)." }
   if ($p.ablauf -lt $jetzt) { throw "freigabe abgelaufen. Bitte neue Vorschau holen." }
+  if ($p.umgebung -ne $UMGEBUNG_NAME) { throw "freigabe gehoert zur Umgebung $($p.umgebung), nicht zu $UMGEBUNG_NAME. Bitte neue Vorschau in der gewuenschten Umgebung holen." }
   if ($p.name -ne $name -or $p.key -ne $key) { throw "Argumente weichen von der Vorschau ab. Bitte neue Vorschau holen." }
   if ($p.fp -ne $plan.fp) { throw "Der Baustein (oder die Bauplan-Datei) hat sich seit der Vorschau geaendert. Bitte neue Vorschau holen." }
   try { $res = & $ausfuehren $plan }

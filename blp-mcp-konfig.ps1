@@ -1,13 +1,18 @@
 # blp-mcp-konfig.ps1 - Konfiguration und Zugangsdaten des BLP-MCP-Servers.
 # Wird von blp-mcp.ps1 und Set-BlpCredential.ps1 per Dot-Sourcing eingebunden.
 #
-# Reihenfolge fuer die Konfigurationsdatei: -Config, dann $env:BLP_MCP_CONFIG, dann config.local.json neben dem Skript.
+# Reihenfolge fuer die Konfigurationsdatei: -Config, dann $env:BLP_MCP_CONFIG, dann config.local.json neben dem Skript,
+# zuletzt die Datei, die das Paket fuer Claude Desktop aus seinen Einstellungen schreibt (mcpb-config.json im Datenordner).
 # Aufbau: siehe config.example.json. Relative Pfade gelten relativ zur Konfigurationsdatei.
+
+function MCPBKonfigPfad { Join-Path $(if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [IO.Path]::GetTempPath() }) "blp-mcp\mcpb-config.json" }
 
 function KonfigPfad([string] $Pfad) {
   if ($Pfad) { return $Pfad }
   if ($env:BLP_MCP_CONFIG) { return $env:BLP_MCP_CONFIG }
-  Join-Path $PSScriptRoot "config.local.json"
+  $lokal = Join-Path $PSScriptRoot "config.local.json"
+  if (-not (Test-Path -LiteralPath $lokal) -and (Test-Path -LiteralPath (MCPBKonfigPfad))) { return MCPBKonfigPfad }
+  $lokal
 }
 
 # Pfad aus der Konfiguration aufloesen: Umgebungsvariablen (%LOCALAPPDATA%), ~ und relativ zur Konfigurationsdatei.
@@ -33,9 +38,13 @@ function Lade-Konfig([string] $Pfad, [string] $Umgebung, [switch] $OhneProjekt) 
   if ($namen.Count -eq 0) { throw "Konfiguration ${datei}: Abschnitt environments fehlt oder ist leer." }
   $name = if ($Umgebung) { $Umgebung } elseif ($c.defaultEnvironment) { "$($c.defaultEnvironment)" } else { $namen[0] }
   if ($name -notin $namen) { throw "Umgebung '$name' fehlt in $datei (vorhanden: $($namen -join ', '))." }
+  $name = @($namen | Where-Object { $_ -eq $name })[0]   # Schreibweise wie in der Datei
   $u = $c.environments.$name
+  $wo = if ([IO.Path]::GetFullPath($datei) -eq [IO.Path]::GetFullPath((MCPBKonfigPfad))) { " Einstellen in Claude Desktop unter Einstellungen > Erweiterungen > BLP-MCP-Server." } else { "" }
   foreach ($f in @("authUrl", "projectUrl", "clientUrl") + $(if ($OhneProjekt) { @() } else { @("projectId") })) {
-    if (-not "$($u.$f)" -or "$($u.$f)" -like "*HIER_*") { throw "Umgebung '$name': $f fehlt oder ist noch ein Platzhalter ($datei)." }
+    if (-not "$($u.$f)" -or "$($u.$f)" -like "*HIER_*") {
+      throw "Umgebung '$name': $f fehlt oder ist noch ein Platzhalter ($datei).$wo$(if ($f -eq "projectId") { " Die Projekte mit ID zeigt Set-BlpCredential.ps1 nach der Anmeldung." })"
+    }
   }
 
   # Nur echtes true zaehlt ("false" als Text waere als [bool] wahr).
@@ -74,7 +83,11 @@ function Zugangsdaten($k) {
   if (-not $k) { throw "Keine Konfiguration." }
   if ($env:BLP_USER -and $env:BLP_PASSWORD) { return @{ user = $env:BLP_USER; password = $env:BLP_PASSWORD } }
   if (-not $k.credentialFile) { throw "Keine Zugangsdaten: credentialFile fehlt bei Umgebung '$($k.name)' (oder BLP_USER und BLP_PASSWORD setzen)." }
-  if (-not (Test-Path -LiteralPath $k.credentialFile)) { throw "Keine Zugangsdaten ($($k.credentialFile)). Einmalig hinterlegen: .\Set-BlpCredential.ps1 -Umgebung $($k.name)" }
+  if (-not (Test-Path -LiteralPath $k.credentialFile)) {
+    # Voller Pfad: beim Paket fuer Claude Desktop liegt das Skript im Ordner der Erweiterung, den kaum jemand kennt.
+    $cfg = if ($k.datei -ne (Join-Path $PSScriptRoot "config.local.json")) { " -Config `"$($k.datei)`"" } else { "" }
+    throw "Keine Zugangsdaten ($($k.credentialFile)). Einmalig selbst in einer Konsole hinterlegen: pwsh -File `"$(Join-Path $PSScriptRoot "Set-BlpCredential.ps1")`" -Umgebung $($k.name)$cfg"
+  }
   $cred = Import-CliXml -LiteralPath $k.credentialFile
   @{ user = $cred.UserName; password = $cred.GetNetworkCredential().Password }
 }

@@ -4,7 +4,7 @@
 
 **Die ELO-Sidebar per KI pflegen: ACTIWARE Business Logic Provider lesen und gezielt ändern – mit Vorschau, Freigabe und Sicherung.**
 
-[![PowerShell 7](https://img.shields.io/badge/PowerShell-7.4%2B-5391fe)](#kompatibilität)
+[![PowerShell 7](https://img.shields.io/badge/PowerShell-7.5%2B-5391fe)](#kompatibilität)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
 [![24 Werkzeuge](https://img.shields.io/badge/Werkzeuge-24-2ea44f)](#werkzeuge)
 [![Zweistufige Freigabe](https://img.shields.io/badge/%C3%84ndern-Vorschau%20%2B%20Freigabe-e36209)](#so-läuft-eine-änderung)
@@ -39,7 +39,8 @@ Die KI liest die Bausteine über dieselbe REST-API wie der Web-Designer, zeigt e
 - **Bilder:** PNG-Symbole ins Bildpaket laden, an Kacheln und Tabs hängen, wieder entfernen.
 - **Zweistufig:** Der erste Aufruf liefert Prüfung, Vorschau und einen Freigabe-Code. Erst der zweite Aufruf mit denselben Argumenten führt aus – fünf Minuten gültig, einmal, nur wenn sich der Baustein seitdem nicht geändert hat.
 - **Abgesichert:** Sicherung vor jeder Änderung, checkout/commit wie im Designer, `undo` bei Fehlern, Kontrolle nach dem Speichern, Protokoll, Maskierung von Passwörtern und Tokens. Produktiv ist standardmäßig nur lesbar.
-- **Kein Dienst, keine Installation:** ein PowerShell-Skript, das euer MCP-Client bei Bedarf startet.
+- **Test und Produktiv in einem Server:** mit `-Umgebung test,produktiv` hat jedes Werkzeug den Parameter `umgebung`, jede Umgebung mit eigener Anmeldung und eigenem Schalter fürs Ändern.
+- **Kein Dienst, keine Installation:** ein PowerShell-Skript, das euer MCP-Client bei Bedarf startet. Für Claude Desktop gibt es zusätzlich ein Paket zum Doppelklicken.
 
 ## Kompatibilität
 
@@ -47,7 +48,7 @@ Die KI liest die Bausteine über dieselbe REST-API wie der Web-Designer, zeigt e
 |---|---|
 | **BLP** | Business Logic Provider 6 mit Web-Designer und REST-API (`/api/v1/…`) |
 | **Konto** | ein Konto, das im BLP-Projekt Bausteine bearbeiten darf. Bei uns ging das nur mit dem BLP-eigenen `admin`; Windows-Konten bekamen trotz Designer-Rechten „User is not authorized“ |
-| **PowerShell** | 7.4 oder neuer (`pwsh`), nicht Windows PowerShell 5.1 |
+| **PowerShell** | 7.5 oder neuer (`pwsh`, wegen `ConvertFrom-Json -DateKind`), nicht Windows PowerShell 5.1 |
 | **System** | Windows: Zugangsdaten verschlüsselt per DPAPI. Andere Systeme über `BLP_USER`/`BLP_PASSWORD`, nicht getestet |
 | **MCP** | stdio (JSON-RPC 2.0), Protokollversion `2025-06-18` |
 | **KI-Clients** | Vorlagen für Claude Code, Claude Desktop, VS Code/GitHub Copilot, Cursor, Codex CLI und Gemini CLI in [`docs/CLIENTS.md`](docs/CLIENTS.md) |
@@ -88,7 +89,15 @@ und frag mich nie nach Passwörtern im Chat.
 
 4. **Testen:** „Wer bin ich im BLP?“ – die KI ruft `blp_whoami` auf und zeigt Umgebung, Projekt, Benutzer und ob Ändern freigeschaltet ist.
 
-Eine zweite Umgebung (z. B. Produktiv, nur lesen) registriert ihr als eigenen Server: `claude mcp add blp-prod … -File "…\blp-mcp.ps1" -Umgebung produktiv`.
+Test und Produktiv in einem Eintrag: `-Umgebung test,produktiv` anhängen. Jedes Werkzeug hat dann den Parameter `umgebung`, ohne Angabe gilt die erste. Ob geändert werden darf, steht je Umgebung unter `allowChanges`. Zugangsdaten für die zweite Umgebung: `.\Set-BlpCredential.ps1 -Umgebung produktiv`.
+
+### C) Claude Desktop: Paket
+
+1. `blp-mcp-<version>.mcpb` aus dem [Release](https://github.com/Herzog-GmbH/blp-mcp/releases) laden und doppelklicken (oder in Claude Desktop unter *Einstellungen → Erweiterungen → Erweiterte Einstellungen → Erweiterung installieren*).
+2. In den Einstellungen der Erweiterung **Umgebung 1** eintragen (z. B. Test): Identity-Dienst mit Port und Projekt-ID. Projektdienst und Client-Dienst leer lassen, wenn sie einen bzw. acht Ports über dem Identity-Dienst liegen (`…01` → `…02`, `…09`). Optional **Umgebung 2** (z. B. Produktiv). „Ändern freischalten“ gibt es je Umgebung, ab Werk aus.
+3. Erweiterung einschalten und die KI fragen: „Wer bin ich im BLP?“ Fehlen die Zugangsdaten, nennt die Antwort den genauen Befehl (`pwsh -File "…\Set-BlpCredential.ps1" -Umgebung test`). Den führt ihr einmal je Umgebung selbst in einer Konsole aus. Oder ihr wählt in den Einstellungen eine vorhandene Zugangsdatei.
+
+Das Paket schreibt die Einstellungen bei jedem Start nach `%LOCALAPPDATA%\blp-mcp\mcpb-config.json` (ohne Geheimnisse). Voraussetzung bleibt PowerShell 7 mit `pwsh` im PATH.
 
 ## Konfiguration
 
@@ -97,8 +106,8 @@ Eine zweite Umgebung (z. B. Produktiv, nur lesen) registriert ihr als eigenen Se
 | Schlüssel | Bedeutung |
 |---|---|
 | `environments.<name>` | je Umgebung `authUrl` (Identity), `projectUrl` (Projektdienst), `clientUrl` (Client-Dienst), `projectId`, `credentialFile`, `allowChanges`, optional `label` und `skipCertificateCheck` |
-| `defaultEnvironment` | Umgebung ohne Startschalter; andere mit `-Umgebung <name>` |
-| `allowChanges` | ändernde Werkzeuge frei (Standard in der Vorlage: Test ja, Produktiv nein). Überschreiben nur bewusst mit `-AendernErlauben` |
+| `defaultEnvironment` | Umgebung ohne Startschalter; andere mit `-Umgebung <name>`, mehrere mit `-Umgebung test,produktiv` |
+| `allowChanges` | ändernde Werkzeuge frei (Standard in der Vorlage: Test ja, Produktiv nein). Überschreiben nur bewusst mit `-AendernErlauben`, das geht nur mit einer Umgebung |
 | `skipCertificateCheck` | nur für selbstsignierte Zertifikate, die der Rechner nicht kennt |
 | `images` | Name des Bildpakets, eigener Symbolordner (`<farbe>\<motiv>_<24\|32\|64>.png`) und welcher Container zu welcher Farbe gehört |
 | `organization`, `extraInstructions` | erscheinen in den Anweisungen an die KI (Firma, Hausregeln) |
@@ -237,7 +246,13 @@ Der Server besteht aus `blp-mcp.ps1` (Protokoll, Anmeldung, Lesewerkzeuge) und d
 python -I test-blp-mcp.py beispiel-aufrufe.json
 ```
 
-`MCP_ARGS` reicht Schalter an den Server durch (z. B. `-Umgebung produktiv`), `MCP_TEST_LIMIT` kürzt die Ausgabe. Ändernde Aufrufe paarweise: erst ohne `freigabe`, dann mit `"freigabe": "$TOKEN"` (= Code der letzten Vorschau). Nach Änderungen am Code den Server im Client neu laden.
+`MCP_ARGS` reicht Schalter an den Server durch (z. B. `-Umgebung test,produktiv`), `MCP_TEST_LIMIT` kürzt die Ausgabe. Ändernde Aufrufe paarweise: erst ohne `freigabe`, dann mit `"freigabe": "$TOKEN"` (= Code der letzten Vorschau). Nach Änderungen am Code den Server im Client neu laden.
+
+Paket für Claude Desktop bauen (prüft Version in `mcpb\manifest.json`, `blp-mcp.ps1` und `CHANGELOG.md`, trägt SHA-256 und Download-Adresse in `server.json` ein):
+
+```powershell
+pwsh -NoProfile -File tools\build-mcpb.ps1
+```
 
 ## Mitmachen
 

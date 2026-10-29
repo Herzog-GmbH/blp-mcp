@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Herzog-GmbH/blp-mcp",
+  "title": "ACTIWARE BLP (ELO Sidebar)",
+  "description": "ACTIWARE BLP: read and change ELO sidebar processes, objects, tabs and tiles, with preview",
+  "repository": {
+    "url": "https://github.com/Herzog-GmbH/blp-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/Herzog-GmbH/blp-mcp",
+  "version": "0.6.0",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/Herzog-GmbH/blp-mcp/releases/download/v0.6.0/blp-mcp-0.6.0.mcpb",
+      "fileSha256": "a825032c1736c087a56f660902c1789059ea224afea5c80211a305695d5c8c6d",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

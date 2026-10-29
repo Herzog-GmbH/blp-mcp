@@ -17,7 +17,7 @@ Ein Mensch hat dich gebeten, diesen BLP-MCP-Server auf seinem Rechner einzuricht
 pwsh -v
 ```
 
-Nötig ist PowerShell 7.4 oder neuer. Fehlt `pwsh`, sag dem Menschen, dass er PowerShell 7 installieren muss (z. B. `winget install Microsoft.PowerShell`), und hör hier auf. Windows PowerShell 5.1 reicht nicht.
+Nötig ist PowerShell 7.5 oder neuer. Fehlt `pwsh`, sag dem Menschen, dass er PowerShell 7 installieren muss (z. B. `winget install Microsoft.PowerShell`), und hör hier auf. Windows PowerShell 5.1 reicht nicht.
 
 Wurde das Repo als ZIP heruntergeladen, sind die Skripte eventuell gesperrt. Dann im Repo-Ordner:
 
@@ -73,13 +73,11 @@ Ruf `blp_whoami` auf. Erwartet: Umgebung, Projekt, Benutzer, `designerRechte` gr
 
 ## Schritt 5 (optional) – Weitere Umgebung
 
-Produktiv als zweiten Server registrieren, nur lesend:
-
-```powershell
-claude mcp add blp-prod --scope user -- pwsh -NoProfile -NoLogo -NonInteractive -File "<voller Pfad>\blp-mcp.ps1" -Umgebung produktiv
-```
+Produktiv in denselben Eintrag nehmen (nur lesend, solange `allowChanges` dort `false` ist): den Eintrag aus Schritt 3 mit `-Umgebung test,produktiv` neu anlegen (`claude mcp remove blp --scope user`, dann `claude mcp add …` mit dem Zusatz). Jedes Werkzeug hat dann den Parameter `umgebung`, ohne Angabe gilt die erste. Wechsle die Umgebung nur, wenn der Mensch es will.
 
 Zugangsdaten dafür: `.\Set-BlpCredential.ps1 -Umgebung produktiv` (Mensch).
+
+Für **Claude Desktop** gibt es das Paket `blp-mcp-<version>.mcpb` aus dem Release. Das installiert der Mensch selbst per Doppelklick und trägt die Adressen in den Einstellungen der Erweiterung ein; du nennst ihm nur die Werte. Fehlen danach Zugangsdaten, nennt `blp_whoami` den genauen Befehl für `Set-BlpCredential.ps1`.
 
 ## Fehlersuche
 
@@ -95,6 +93,8 @@ Zugangsdaten dafür: `.\Set-BlpCredential.ps1 -Umgebung produktiv` (Mensch).
 | „Der Baustein (oder die Bauplan-Datei) hat sich seit der Vorschau geaendert“ | jemand hat inzwischen im Designer gespeichert oder die Bauplan-Datei wurde geändert: neue Vorschau holen |
 | „Bauplan fehlerhaft: …“ | `blp_process_build` hat den Bauplan geprüft und abgelehnt; jede Zeile nennt Knoten oder Verbindung und den Grund |
 | Server startet nicht, Client meldet „failed“ | `pwsh` nicht im PATH, Skripte gesperrt (Schritt 0) oder Syntaxfehler nach eigenen Änderungen: `python -I test-blp-mcp.py` zeigt die Fehlerausgabe |
+| Claude Desktop (Paket): „Verbindung zum Erweiterungs-Server nicht möglich“ | Grund steht in `mcp-server-BLP-MCP-Server.log` im Log-Ordner von Claude Desktop. Meist fehlt PowerShell 7 (`pwsh` im PATH). Fehlende Adressen oder Zugangsdaten meldet dagegen jeder Werkzeugaufruf im Chat |
+| „Umgebung '…' ist in diesem Server nicht eingerichtet“ | der Parameter `umgebung` nennt eine Umgebung, die beim Start nicht in `-Umgebung` stand |
 
 ## Mit dem Server arbeiten
 

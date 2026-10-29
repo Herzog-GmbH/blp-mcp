@@ -14,3 +14,6 @@ protokoll-*.jsonl
 # Testlaeufe
 aufrufe*.json
 __pycache__/
+
+# Gebaute Pakete (tools/build-mcpb.ps1)
+dist/

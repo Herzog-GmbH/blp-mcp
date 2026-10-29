@@ -5,23 +5,24 @@ Der Server läuft über **stdio**: Der Client startet `pwsh` mit dem Skript und 
 Gemeinsamer Aufruf:
 
 ```text
-pwsh -NoProfile -NoLogo -NonInteractive -File "C:\Tools\blp-mcp\blp-mcp.ps1" [-Umgebung <name>] [-Config <pfad>]
+pwsh -NoProfile -NoLogo -NonInteractive -File "C:\Tools\blp-mcp\blp-mcp.ps1" [-Umgebung <name>[,<name>]] [-Config <pfad>]
 ```
 
-Für eine zweite Umgebung (z. B. Produktiv, nur lesen) den Server ein zweites Mal unter anderem Namen eintragen und `-Umgebung produktiv` anhängen.
+Test und Produktiv in einem Eintrag: `-Umgebung test,produktiv`. Jedes Werkzeug hat dann den Parameter `umgebung`, ohne Angabe gilt die erste. Alternativ den Server ein zweites Mal unter anderem Namen mit `-Umgebung produktiv` eintragen.
 
 ## Claude Code
 
 ```powershell
-claude mcp add blp --scope user -- pwsh -NoProfile -NoLogo -NonInteractive -File "C:\Tools\blp-mcp\blp-mcp.ps1"
-claude mcp add blp-prod --scope user -- pwsh -NoProfile -NoLogo -NonInteractive -File "C:\Tools\blp-mcp\blp-mcp.ps1" -Umgebung produktiv
+claude mcp add blp --scope user -- pwsh -NoProfile -NoLogo -NonInteractive -File "C:\Tools\blp-mcp\blp-mcp.ps1" -Umgebung test,produktiv
 ```
 
 Danach neue Sitzung oder `/mcp` zum Neuladen.
 
 ## Claude Desktop
 
-`%APPDATA%\Claude\claude_desktop_config.json`:
+Am einfachsten über das Paket `blp-mcp-<version>.mcpb` aus dem [Release](https://github.com/Herzog-GmbH/blp-mcp/releases): doppelklicken, in den Einstellungen der Erweiterung Umgebung 1 und optional Umgebung 2 eintragen, siehe [README](../README.md#c-claude-desktop-paket). Eine `config.local.json` braucht es dafür nicht.
+
+Ohne Paket in `%APPDATA%\Claude\claude_desktop_config.json`:
 
 ```json
 {

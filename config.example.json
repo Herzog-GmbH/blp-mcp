@@ -8,7 +8,7 @@
   "_hinweis_extraInstructions": "Optional. Freitext, der an die Anweisungen fuer die KI angehaengt wird, z. B. Hausregeln oder Verweise auf andere MCP-Server.",
 
   "defaultEnvironment": "test",
-  "_hinweis_defaultEnvironment": "Umgebung, die ohne -Umgebung startet. Fuer weitere Umgebungen den Server ein zweites Mal registrieren, z. B. als blp-prod mit -Umgebung produktiv.",
+  "_hinweis_defaultEnvironment": "Umgebung, die ohne -Umgebung startet. Mehrere in einem Server mit -Umgebung test,produktiv (jedes Werkzeug bekommt den Parameter umgebung, die erste gilt ohne Angabe).",
 
   "skipCertificateCheck": false,
   "_hinweis_skipCertificateCheck": "true nur, wenn der BLP ein selbstsigniertes Zertifikat hat, das dieser Rechner nicht kennt. Besser: das Zertifikat bzw. die interne CA vertrauenswuerdig machen. Kann je Umgebung ueberschrieben werden.",

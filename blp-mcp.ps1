@@ -17,14 +17,17 @@
   claude mcp add blp --scope user -- pwsh -NoProfile -NoLogo -NonInteractive -File "C:\Tools\blp-mcp\blp-mcp.ps1"
 .EXAMPLE
   claude mcp add blp-prod --scope user -- pwsh -NoProfile -NoLogo -NonInteractive -File "C:\Tools\blp-mcp\blp-mcp.ps1" -Umgebung produktiv
+.EXAMPLE
+  claude mcp add blp --scope user -- pwsh -NoProfile -NoLogo -NonInteractive -File "C:\Tools\blp-mcp\blp-mcp.ps1" -Umgebung test,produktiv
 #>
 [CmdletBinding()]
 param(
   # Umgebung aus der Konfiguration (Schluessel unter "environments"); Standard: defaultEnvironment.
+  # Mehrere mit Komma ("test,produktiv"): ein Server fuer alle, jedes Werkzeug bekommt den Parameter umgebung, die erste gilt ohne Angabe.
   [string] $Umgebung,
   # Kurzform fuer -Umgebung produktiv.
   [switch] $Produktiv,
-  # Aendernde Werkzeuge auch in einer Umgebung mit "allowChanges": false freischalten.
+  # Aendernde Werkzeuge auch in einer Umgebung mit "allowChanges": false freischalten (nur mit einer Umgebung).
   [Alias("AendernAufProduktiv")] [switch] $AendernErlauben,
   # Pfad zur Konfiguration; Standard: $env:BLP_MCP_CONFIG, sonst config.local.json neben diesem Skript.
   [string] $Config
@@ -38,7 +41,7 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $utf8
 $STDOUT = [Console]::Out
 
-$VERSION = "0.5.0"
+$VERSION = "0.6.0"
 $MAX_TEXT = 60000
 
 function Log([string] $m) { [Console]::Error.WriteLine("[blp-mcp] $m") }
@@ -48,14 +51,43 @@ function Log([string] $m) { [Console]::Error.WriteLine("[blp-mcp] $m") }
 . (Join-Path $PSScriptRoot "blp-mcp-konfig.ps1")
 # Faellt das Laden aus, startet der Server trotzdem: jeder Werkzeugaufruf meldet dann den Fehler (sichtbarer als ein stiller Abbruch).
 $script:KonfigFehler = $null
-try { $K = Lade-Konfig -Pfad $Config -Umgebung $(if ($Umgebung) { $Umgebung } elseif ($Produktiv) { "produktiv" } else { "" }) }
-catch { $script:KonfigFehler = "$($_.Exception.Message)"; Log "Konfiguration: $script:KonfigFehler"; $K = $null }
+$KONTEXTE = [ordered]@{}
+try {
+  $namen = @(if ($Umgebung) { $Umgebung -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ } } elseif ($Produktiv) { "produktiv" })
+  if ($namen.Count -eq 0) { $namen = @("") }
+  foreach ($n in $namen) {
+    $k1 = Lade-Konfig -Pfad $Config -Umgebung $n
+    if ($KONTEXTE.Contains($k1.name)) { throw "Umgebung '$($k1.name)' doppelt angegeben." }
+    $KONTEXTE[$k1.name] = $k1
+  }
+  if ($KONTEXTE.Count -gt 1 -and $AendernErlauben) { throw "-AendernErlauben gilt nur mit einer Umgebung. Bei mehreren Umgebungen allowChanges je Umgebung in der Konfiguration setzen." }
+} catch { $script:KonfigFehler = "$($_.Exception.Message)"; Log "Konfiguration: $script:KonfigFehler"; $KONTEXTE = [ordered]@{} }
+$MEHRERE = $KONTEXTE.Count -gt 1
+$STANDARD = if ($KONTEXTE.Count) { @($KONTEXTE.Keys)[0] } else { $null }
 
-if ($K) {
-  $UMGEBUNG = $K.label; $AUTH = $K.authUrl; $PROJEKT = $K.projectUrl; $CLIENT = $K.clientUrl; $PROJEKT_ID = $K.projectId
-  $SYSTEM = $K.clientSystemId; $TLS = $K.tls
-} else {
-  $UMGEBUNG = "(nicht konfiguriert)"; $AUTH = $PROJEKT = $CLIENT = $PROJEKT_ID = ""; $SYSTEM = "IoSidebarWebClient"; $TLS = @{}
+function Erlaubt($k) { [bool] ($k -and ($k.aendernErlaubt -or $AendernErlauben)) }
+function UmgebungText($k) { "$($k.name) = $($k.label) ($(if (Erlaubt $k) { "lesen und aendern" } else { "nur lesen" }))" }
+
+# Alles, was an einer Umgebung haengt. Bei mehreren Umgebungen schaltet Rufe vor jedem Aufruf um;
+# Anmeldung und Zwischenspeicher (Prozessliste, Module, Bausteinkatalog) behaelt jede Umgebung fuer sich.
+$ZUSTAND = @{}
+$UMGEBUNG_NAME = $null
+function Setze-Umgebung([string] $name) {
+  if ($script:UMGEBUNG_NAME -eq $name) { return }
+  if ($script:UMGEBUNG_NAME) { $ZUSTAND[$script:UMGEBUNG_NAME] = @{ Token = $script:Token; Prozessliste = $script:Prozessliste; Module = $script:Module; Katalog = $script:Katalog } }
+  $z = $ZUSTAND[$name]
+  $script:Token = $z.Token; $script:Prozessliste = $z.Prozessliste; $script:Katalog = $z.Katalog
+  $script:Module = if ($z) { $z.Module } else { @{} }
+  $k = $KONTEXTE[$name]
+  $script:K = $k; $script:UMGEBUNG_NAME = $name
+  $script:UMGEBUNG = $k.label; $script:AUTH = $k.authUrl; $script:PROJEKT = $k.projectUrl; $script:CLIENT = $k.clientUrl; $script:PROJEKT_ID = $k.projectId
+  $script:SYSTEM = $k.clientSystemId; $script:TLS = $k.tls
+  $script:AENDERN_ERLAUBT = Erlaubt $k
+}
+
+if ($STANDARD) { Setze-Umgebung $STANDARD }
+else {
+  $K = $null; $UMGEBUNG = "(nicht konfiguriert)"; $AUTH = $PROJEKT = $CLIENT = $PROJEKT_ID = ""; $SYSTEM = "IoSidebarWebClient"; $TLS = @{}
 }
 
 # ---------- API ----------
@@ -186,7 +218,11 @@ function KachelKurz($t) {
 
 $TOOLS = [System.Collections.Generic.List[object]]::new()
 $HANDLER = @{}
+# Bei mehreren Umgebungen bekommt jedes Werkzeug den Parameter umgebung (Rufe nimmt ihn vor dem Aufruf wieder heraus).
+$UMGEBUNG_PARAM = if ($MEHRERE) { @{ type = "string"; enum = @($KONTEXTE.Keys)
+  description = "Umgebung: " + (@($KONTEXTE.Values | ForEach-Object { UmgebungText $_ }) -join ", ") + ". Ohne Angabe $STANDARD." } }
 function Werkzeug([string] $name, [string] $beschreibung, [hashtable] $props, [string[]] $pflicht, [scriptblock] $fn, [switch] $Schreibt) {
+  if ($UMGEBUNG_PARAM) { $props = $props.Clone(); $props.umgebung = $UMGEBUNG_PARAM }
   $ann = if ($Schreibt) { @{ readOnlyHint = $false; destructiveHint = $false; idempotentHint = $false; openWorldHint = $false } } else { @{ readOnlyHint = $true; openWorldHint = $false } }
   $TOOLS.Add([ordered]@{ name = $name; description = $beschreibung
     inputSchema = [ordered]@{ type = "object"; properties = $props; required = @($pflicht); additionalProperties = $false }
@@ -199,9 +235,11 @@ Werkzeug "blp_whoami" "Zeigt Umgebung, Projekt, angemeldeten BLP-Benutzer, Desig
   $h = Header
   $info = Invoke-RestMethod -Uri "$AUTH/api/v2/auth/info" -Headers @{ Authorization = $h.Authorization } @TLS
   $perm = $null; try { $perm = (Blp-Get "$PROJEKT/api/v1/designer/permission" | ConvertFrom-Json).permissions } catch {}
-  [ordered]@{ umgebung = $UMGEBUNG; projektdienst = $PROJEKT; projektId = $PROJEKT_ID; benutzer = $info.user_display_name
+  $o = [ordered]@{ umgebung = $UMGEBUNG; projektdienst = $PROJEKT; projektId = $PROJEKT_ID; benutzer = $info.user_display_name
     gruppen = @(L $info.groups | ForEach-Object { $_.name }); designerRechte = @(L $perm).Count; mcpVersion = $VERSION; aendernErlaubt = $AENDERN_ERLAUBT
     zertifikatPruefung = -not $TLS.SkipCertificateCheck; konfiguration = $K.datei; hinweis = "Veroeffentlichen macht ein Mensch im Designer, nicht der MCP." }
+  if ($MEHRERE) { $o.umgebungen = @($KONTEXTE.Values | ForEach-Object { UmgebungText $_ }) }
+  $o
 }
 
 Werkzeug "blp_processes" "Listet alle BLP-Prozesse (Server, Client, Sub, Vorlagen) mit ID, Version, Ordner, letzter Aenderung. Optional nach Namensteil filtern." @{ filter = @{ type = "string"; description = "Namensteil, z. B. 'Rechnung'" } } @() {
@@ -364,8 +402,11 @@ Werkzeug "blp_get" "Beliebiger lesender GET am Projektdienst (Pfad relativ zum P
 # ---------- Protokoll ----------
 
 function Anleitung {
-  "BLP (ACTIWARE Business Logic Provider)$(if ($K -and $K.organisation) { " - $($K.organisation)" }), Umgebung $UMGEBUNG, " +
-  $(if ($AENDERN_ERLAUBT) { "lesen und aendern. " } else { "nur lesen (aendernde Werkzeuge gesperrt). " }) +
+  "BLP (ACTIWARE Business Logic Provider)$(if ($K -and $K.organisation) { " - $($K.organisation)" }), " +
+  $(if ($MEHRERE) {
+    "Umgebungen: " + (@($KONTEXTE.Values | ForEach-Object { UmgebungText $_ }) -join ", ") + ". Jedes Werkzeug hat den Parameter umgebung, ohne Angabe gilt $STANDARD. " +
+    "Die Umgebung nur wechseln, wenn der Anwender es will, und in der Antwort nennen. "
+  } else { "Umgebung $UMGEBUNG, " + $(if ($AENDERN_ERLAUBT) { "lesen und aendern. " } else { "nur lesen (aendernde Werkzeuge gesperrt). " }) }) +
   "Aendernde Werkzeuge arbeiten zweistufig: erster Aufruf ohne freigabe liefert Pruefung und Vorschau (bisher/neu je Pfad) und einen Freigabe-Code; " +
   "erst der zweite Aufruf mit denselben Argumenten plus freigabe fuehrt aus. Vorschau dem Anwender zeigen und Zustimmung abwarten. " +
   "Prozesse, Objekte, Kacheln, Tabs, Rollen, Feldverwaltung, Auswahlbaum (client/selection), Bildpaket. " +
@@ -382,21 +423,32 @@ function Rufe([string] $name, $args2) {
   $fn = $HANDLER[$name]
   if (-not $fn) { return @{ content = @(@{ type = "text"; text = "Unbekanntes Werkzeug: $name" }); isError = $true } }
   if ($script:KonfigFehler) { return @{ content = @(@{ type = "text"; text = "Fehler: BLP-MCP ist nicht eingerichtet. $script:KonfigFehler" }); isError = $true } }
+  $ziel = $STANDARD
+  if ($args2.PSObject.Properties["umgebung"]) {
+    $w = "$($args2.umgebung)"; $args2.PSObject.Properties.Remove("umgebung")
+    if ($w) {
+      $ziel = @($KONTEXTE.Keys | Where-Object { $_ -eq $w -or $KONTEXTE[$_].label -eq $w })[0]
+      if (-not $ziel) { return @{ content = @(@{ type = "text"; text = "Fehler: Umgebung '$w' ist in diesem Server nicht eingerichtet (vorhanden: $(@($KONTEXTE.Keys) -join ', '))." }); isError = $true } }
+    }
+  }
+  Setze-Umgebung $ziel
+  $wo = if ($MEHRERE) { " [$ziel]" } else { "" }
   $t0 = Get-Date
   try {
     $r = & $fn $args2
     $text = Maskiere (ConvertTo-Json -InputObject $r -Depth 60)
     if ($text.Length -gt $MAX_TEXT) { $text = $text.Substring(0, $MAX_TEXT) + "`n... (gekuerzt, $($text.Length) Zeichen insgesamt - enger fragen, z. B. knoten oder filter)" }
-    Log "$name ok ($([int]((Get-Date) - $t0).TotalMilliseconds) ms)"
+    Log "$name$wo ok ($([int]((Get-Date) - $t0).TotalMilliseconds) ms)"
     @{ content = @(@{ type = "text"; text = $text }) }
   } catch {
     $m = Maskiere "$($_.Exception.Message)"
-    Log "$name FEHLER $m"
+    Log "$name$wo FEHLER $m"
     @{ content = @(@{ type = "text"; text = "Fehler: $m" }); isError = $true }
   }
 }
 
-Log "gestartet: v$VERSION, Umgebung $UMGEBUNG, Projekt $PROJEKT_ID, $($TOOLS.Count) Werkzeuge, aendern $(if ($AENDERN_ERLAUBT) { "erlaubt" } else { "gesperrt" })"
+if ($MEHRERE) { Log "gestartet: v$VERSION, Umgebungen $(@($KONTEXTE.Values | ForEach-Object { UmgebungText $_ }) -join ', '), $($TOOLS.Count) Werkzeuge" }
+else { Log "gestartet: v$VERSION, Umgebung $UMGEBUNG, Projekt $PROJEKT_ID, $($TOOLS.Count) Werkzeuge, aendern $(if ($AENDERN_ERLAUBT) { "erlaubt" } else { "gesperrt" })" }
 while ($null -ne ($zeile = [Console]::In.ReadLine())) {
   if (-not $zeile.Trim()) { continue }
   try { $msg = $zeile | ConvertFrom-Json -AsHashtable -Depth 100 } catch { Send @{ jsonrpc = "2.0"; id = $null; error = @{ code = -32700; message = "Kein gueltiges JSON" } }; continue }

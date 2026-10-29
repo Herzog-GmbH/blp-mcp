@@ -1,0 +1,199 @@
+{
+  "manifest_version": "0.3",
+  "name": "blp-mcp",
+  "display_name": "BLP-MCP-Server",
+  "version": "0.6.0",
+  "description": "ACTIWARE Business Logic Provider (ELO-Sidebar) für die KI: Prozesse, Objekte, Tabs, Kacheln, Rollen lesen und gezielt ändern, mit Vorschau und Freigabe.",
+  "long_description": "Ein MCP-Server für den **BLP (ACTIWARE Business Logic Provider)**, das Werkzeug, mit dem ihr die Sidebar eures ELO-Clients baut. Er spricht dieselbe REST-API wie der Web-Designer und meldet sich mit einem Konto an, das Designer-Rechte hat (oft der BLP-eigene admin).\n\n**Zwei Umgebungen:** In den Einstellungen tragt ihr Umgebung 1 (z. B. Test) und optional Umgebung 2 (z. B. Produktiv) ein, jede mit eigenen Adressen, Projekt-ID, Zugangsdatei und eigenem Schalter fürs Ändern. Jedes Werkzeug hat dann den Parameter `umgebung`, ohne Angabe gilt Umgebung 1.\n\n**Adressen:** Identity-Dienst (Anmeldung) ist Pflicht. Projektdienst und Client-Dienst leer lassen, wenn sie auf demselben Server einen bzw. acht Ports über dem Identity-Dienst liegen (…01 → …02 und …09).\n\n**Zugangsdaten** stehen nie in den Einstellungen. Nach dem ersten Einschalten fragt ihr die KI nach `blp_whoami`: Fehlen die Zugangsdaten, nennt die Antwort den genauen Befehl, z. B.\n\n`pwsh -File \"…\\Set-BlpCredential.ps1\" -Umgebung test`\n\nDen führt ihr einmal je Umgebung selbst in einer Konsole aus. Das Skript liegt im Ordner der Erweiterung, fragt Benutzer und Passwort verdeckt ab, verschlüsselt sie per DPAPI für euer Windows-Konto und zeigt nach der Anmeldung die Projekte mit ID. Alternativ eine vorhandene Zugangsdatei in den Einstellungen wählen.\n\n**Voraussetzungen:** Windows 10/11 mit PowerShell 7.5 oder neuer (`pwsh` im PATH, z. B. `winget install Microsoft.PowerShell`), BLP mit Web-Designer (getestet mit BLP 6).\n\n**Ändern** ist je Umgebung aus, bis ihr es einschaltet. Jede Änderung kommt zuerst als Vorschau (bisher/neu) und läuft nur mit einem Freigabe-Code, vorher wird gesichert. Veröffentlichen macht ein Mensch im Designer.\n\nKein Produkt der ACTIWARE GmbH oder der ELO Digital Office GmbH. Business Logic Provider ist ein Produkt der ACTIWARE GmbH, ELO ist eine Marke der ELO Digital Office GmbH.",
+  "author": {
+    "name": "Herzog-GmbH",
+    "url": "https://github.com/Herzog-GmbH"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Herzog-GmbH/blp-mcp.git"
+  },
+  "homepage": "https://github.com/Herzog-GmbH/blp-mcp",
+  "documentation": "https://github.com/Herzog-GmbH/blp-mcp#readme",
+  "support": "https://github.com/Herzog-GmbH/blp-mcp/issues",
+  "icon": "icon.png",
+  "license": "MIT",
+  "keywords": ["blp", "actiware", "elo", "sidebar", "business logic provider", "designer"],
+  "server": {
+    "type": "binary",
+    "entry_point": "mcpb-start.ps1",
+    "mcp_config": {
+      "command": "pwsh.exe",
+      "args": ["-NoProfile", "-NoLogo", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${__dirname}/mcpb-start.ps1"],
+      "env": {
+        "BLP_MCPB_NAME": "${user_config.name}",
+        "BLP_MCPB_AUTH_URL": "${user_config.auth_url}",
+        "BLP_MCPB_PROJECT_ID": "${user_config.project_id}",
+        "BLP_MCPB_PROJECT_URL": "${user_config.project_url}",
+        "BLP_MCPB_CLIENT_URL": "${user_config.client_url}",
+        "BLP_MCPB_CREDENTIAL_FILE": "${user_config.credential_file}",
+        "BLP_MCPB_AENDERN": "${user_config.aendern}",
+        "BLP_MCPB_NAME2": "${user_config.name2}",
+        "BLP_MCPB_AUTH_URL2": "${user_config.auth_url2}",
+        "BLP_MCPB_PROJECT_ID2": "${user_config.project_id2}",
+        "BLP_MCPB_PROJECT_URL2": "${user_config.project_url2}",
+        "BLP_MCPB_CLIENT_URL2": "${user_config.client_url2}",
+        "BLP_MCPB_CREDENTIAL_FILE2": "${user_config.credential_file2}",
+        "BLP_MCPB_AENDERN2": "${user_config.aendern2}",
+        "BLP_MCPB_ZERTIFIKAT_IGNORIEREN": "${user_config.zertifikat_ignorieren}",
+        "BLP_MCPB_ORGANISATION": "${user_config.organisation}",
+        "BLP_MCPB_HINWEISE": "${user_config.hinweise}",
+        "BLP_MCPB_SYMBOLORDNER": "${user_config.symbolordner}",
+        "BLP_MCPB_BILDCONTAINER": "${user_config.bildcontainer}"
+      }
+    }
+  },
+  "user_config": {
+    "name": {
+      "type": "string",
+      "title": "Umgebung 1: Name",
+      "description": "Name, mit dem die KI diese Umgebung anspricht, z. B. Test. Diese Umgebung gilt, wenn die KI keine angibt.",
+      "default": "Test",
+      "required": false
+    },
+    "auth_url": {
+      "type": "string",
+      "title": "Umgebung 1: Identity-Dienst (Anmeldung)",
+      "description": "Adresse des Identity-Dienstes mit Port, z. B. https://blp.example.com:40001. Steht im Web-Designer unter F12 > Netzwerk beim Aufruf auth/login.",
+      "required": true
+    },
+    "project_id": {
+      "type": "string",
+      "title": "Umgebung 1: Projekt-ID",
+      "description": "24-stellige ID des Designer-Projekts. Unbekannt? Leer lassen: Set-BlpCredential.ps1 zeigt nach der Anmeldung die Projekte mit ID.",
+      "required": false
+    },
+    "project_url": {
+      "type": "string",
+      "title": "Umgebung 1: Projektdienst (optional)",
+      "description": "Designer-API, z. B. https://blp.example.com:40002. Leer lassen, wenn er einen Port über dem Identity-Dienst liegt.",
+      "required": false
+    },
+    "client_url": {
+      "type": "string",
+      "title": "Umgebung 1: Client-Dienst (optional)",
+      "description": "Liefert die veröffentlichte Sidebar aus, z. B. https://blp.example.com:40009. Leer lassen, wenn er acht Ports über dem Identity-Dienst liegt.",
+      "required": false
+    },
+    "credential_file": {
+      "type": "file",
+      "title": "Umgebung 1: Zugangsdatei (optional)",
+      "description": "Mit Set-BlpCredential.ps1 angelegte Datei. Leer lassen für %LOCALAPPDATA%\\blp-mcp\\blp-credential-<name>.xml.",
+      "required": false
+    },
+    "aendern": {
+      "type": "boolean",
+      "title": "Umgebung 1: Ändern freischalten",
+      "description": "Ändernde Werkzeuge (Kacheln, Tabs, Prozesse, Rollen, Auswahlbaum, Bilder). Jede Änderung zweistufig mit Vorschau und Freigabe-Code. Am besten nur für eine Test-Umgebung.",
+      "default": false
+    },
+    "name2": {
+      "type": "string",
+      "title": "Umgebung 2: Name",
+      "description": "Name der zweiten Umgebung, z. B. Produktiv.",
+      "default": "Produktiv",
+      "required": false
+    },
+    "auth_url2": {
+      "type": "string",
+      "title": "Umgebung 2: Identity-Dienst (optional)",
+      "description": "Zweite Umgebung, z. B. https://blp.example.com:30001. Dann hat jedes Werkzeug den Parameter umgebung. Leer lassen für nur eine Umgebung.",
+      "required": false
+    },
+    "project_id2": {
+      "type": "string",
+      "title": "Umgebung 2: Projekt-ID",
+      "description": "24-stellige ID des Designer-Projekts der zweiten Umgebung.",
+      "required": false
+    },
+    "project_url2": {
+      "type": "string",
+      "title": "Umgebung 2: Projektdienst (optional)",
+      "description": "Leer lassen, wenn er einen Port über dem Identity-Dienst liegt.",
+      "required": false
+    },
+    "client_url2": {
+      "type": "string",
+      "title": "Umgebung 2: Client-Dienst (optional)",
+      "description": "Leer lassen, wenn er acht Ports über dem Identity-Dienst liegt.",
+      "required": false
+    },
+    "credential_file2": {
+      "type": "file",
+      "title": "Umgebung 2: Zugangsdatei (optional)",
+      "description": "Mit Set-BlpCredential.ps1 angelegte Datei. Leer lassen für %LOCALAPPDATA%\\blp-mcp\\blp-credential-<name>.xml.",
+      "required": false
+    },
+    "aendern2": {
+      "type": "boolean",
+      "title": "Umgebung 2: Ändern freischalten",
+      "description": "Nur bewusst einschalten, wenn die zweite Umgebung Produktiv ist.",
+      "default": false
+    },
+    "zertifikat_ignorieren": {
+      "type": "boolean",
+      "title": "Zertifikat nicht prüfen",
+      "description": "Nur, wenn der BLP ein selbstsigniertes Zertifikat hat, das dieser Rechner nicht kennt. Besser: der internen CA vertrauen.",
+      "default": false
+    },
+    "organisation": {
+      "type": "string",
+      "title": "Firma (optional)",
+      "description": "Erscheint in den Hinweisen an die KI, z. B. Muster GmbH.",
+      "required": false
+    },
+    "hinweise": {
+      "type": "string",
+      "title": "Zusätzliche Hinweise an die KI (optional)",
+      "description": "Freitext, z. B. wer veröffentlicht oder welche anderen MCP-Server es gibt.",
+      "required": false
+    },
+    "symbolordner": {
+      "type": "directory",
+      "title": "Symbolordner (optional)",
+      "description": "Eigene Kachelsymbole als <farbe>\\<motiv>_<24|32|64>.png für blp_image_upload mit motiv.",
+      "required": false
+    },
+    "bildcontainer": {
+      "type": "string",
+      "title": "Bild-Container je Farbe (optional)",
+      "description": "Welcher Container des Bildpakets zu welcher Farbe gehört, z. B. weiss=Symbole hell; dunkel=Symbole dunkel",
+      "required": false
+    }
+  },
+  "tools": [
+    { "name": "blp_whoami", "description": "Umgebung, Projekt, angemeldeter Benutzer, Designer-Rechte, ob Ändern frei ist" },
+    { "name": "blp_processes", "description": "Alle Prozesse (Server, Client, Sub, Vorlagen)" },
+    { "name": "blp_process", "description": "Prozess mit Knoten, Bausteinen, Parametern, Verbindungen" },
+    { "name": "blp_objects", "description": "Geschäftsobjekte" },
+    { "name": "blp_object", "description": "Geschäftsobjekt mit Feldern, Füllregeln, Suche, Kacheln" },
+    { "name": "blp_tabs", "description": "Sidebar-Tabs" },
+    { "name": "blp_tab", "description": "Sidebar-Tab mit allen Kacheln" },
+    { "name": "blp_fields", "description": "Feldverwaltung: Parameter, Variablen, Datenfelder" },
+    { "name": "blp_roles", "description": "Rollen und Situationen mit Tabs und Kacheln" },
+    { "name": "blp_selection", "description": "Auswahlbaum des Desktop-Clients" },
+    { "name": "blp_dataqueries", "description": "Datenabfragen ohne Verbindungsdaten" },
+    { "name": "blp_published", "description": "Stand der Veröffentlichung am Client-Dienst" },
+    { "name": "blp_get", "description": "Lesender GET am Projekt- oder Client-Dienst" },
+    { "name": "blp_read_path", "description": "Wert an einem Pfad eines Bausteins" },
+    { "name": "blp_change", "description": "Baustein gezielt über Pfade ändern (Vorschau, Freigabe)" },
+    { "name": "blp_create_process", "description": "Prozess als Kopie anlegen (Vorschau, Freigabe)" },
+    { "name": "blp_create_tab", "description": "Leeren Sidebar-Tab anlegen (Vorschau, Freigabe)" },
+    { "name": "blp_add_tile", "description": "Kachel an Tab oder Objekt hängen (Vorschau, Freigabe)" },
+    { "name": "blp_images", "description": "Bildpaket mit Containern und Bildern" },
+    { "name": "blp_image_upload", "description": "PNG ins Bildpaket laden und zuweisen (Vorschau, Freigabe)" },
+    { "name": "blp_image_remove", "description": "Bilder aus dem Bildpaket nehmen (Vorschau, Freigabe)" },
+    { "name": "blp_process_export", "description": "Prozess als JSON-Bauplan" },
+    { "name": "blp_process_build", "description": "Prozess aus Bauplan bauen, kopieren oder ersetzen (Vorschau, Freigabe)" },
+    { "name": "blp_create_object", "description": "Geschäftsobjekt anlegen (Vorschau, Freigabe)" }
+  ],
+  "tools_generated": false,
+  "compatibility": {
+    "platforms": ["win32"]
+  }
+}
