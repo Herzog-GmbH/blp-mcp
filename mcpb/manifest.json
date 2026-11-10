@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "blp-mcp",
   "display_name": "BLP-MCP-Server",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "ACTIWARE Business Logic Provider (ELO-Sidebar) für die KI: Prozesse, Objekte, Tabs, Kacheln, Rollen lesen und gezielt ändern, mit Vorschau und Freigabe.",
   "long_description": "Ein MCP-Server für den **BLP (ACTIWARE Business Logic Provider)**, das Werkzeug, mit dem ihr die Sidebar eures ELO-Clients baut. Er spricht dieselbe REST-API wie der Web-Designer und meldet sich mit einem Konto an, das Designer-Rechte hat (oft der BLP-eigene admin).\n\n**Zwei Umgebungen:** In den Einstellungen tragt ihr Umgebung 1 (z. B. Test) und optional Umgebung 2 (z. B. Produktiv) ein, jede mit eigenen Adressen, Projekt-ID, Zugangsdatei und eigenem Schalter fürs Ändern. Jedes Werkzeug hat dann den Parameter `umgebung`, ohne Angabe gilt Umgebung 1.\n\n**Adressen:** Identity-Dienst (Anmeldung) ist Pflicht. Projektdienst und Client-Dienst leer lassen, wenn sie auf demselben Server einen bzw. acht Ports über dem Identity-Dienst liegen (…01 → …02 und …09).\n\n**Zugangsdaten** stehen nie in den Einstellungen. Nach dem ersten Einschalten fragt ihr die KI nach `blp_whoami`: Fehlen die Zugangsdaten, nennt die Antwort den genauen Befehl, z. B.\n\n`pwsh -File \"…\\Set-BlpCredential.ps1\" -Umgebung test`\n\nDen führt ihr einmal je Umgebung selbst in einer Konsole aus. Das Skript liegt im Ordner der Erweiterung, fragt Benutzer und Passwort verdeckt ab, verschlüsselt sie per DPAPI für euer Windows-Konto und zeigt nach der Anmeldung die Projekte mit ID. Alternativ eine vorhandene Zugangsdatei in den Einstellungen wählen.\n\n**Voraussetzungen:** Windows 10/11 mit PowerShell 7.5 oder neuer (`pwsh` im PATH, z. B. `winget install Microsoft.PowerShell`), BLP mit Web-Designer (getestet mit BLP 6).\n\n**Ändern** ist je Umgebung aus, bis ihr es einschaltet. Jede Änderung kommt zuerst als Vorschau (bisher/neu) und läuft nur mit einem Freigabe-Code, vorher wird gesichert. Veröffentlichen macht ein Mensch im Designer.\n\nKein Produkt der ACTIWARE GmbH oder der ELO Digital Office GmbH. Business Logic Provider ist ein Produkt der ACTIWARE GmbH, ELO ist eine Marke der ELO Digital Office GmbH.",
   "author": {
@@ -190,7 +190,10 @@
     { "name": "blp_image_remove", "description": "Bilder aus dem Bildpaket nehmen (Vorschau, Freigabe)" },
     { "name": "blp_process_export", "description": "Prozess als JSON-Bauplan" },
     { "name": "blp_process_build", "description": "Prozess aus Bauplan bauen, kopieren oder ersetzen (Vorschau, Freigabe)" },
-    { "name": "blp_create_object", "description": "Geschäftsobjekt anlegen (Vorschau, Freigabe)" }
+    { "name": "blp_create_object", "description": "Geschäftsobjekt anlegen (Vorschau, Freigabe)" },
+    { "name": "blp_modules", "description": "Module mit ihrer Modulkonfiguration im Projekt" },
+    { "name": "blp_module", "description": "Modulkonfiguration ausgepackt, z. B. Validation, AI Foundation" },
+    { "name": "blp_module_restore", "description": "Sicherung einer Modulkonfiguration zurückspielen (Vorschau, Freigabe)" }
   ],
   "tools_generated": false,
   "compatibility": {

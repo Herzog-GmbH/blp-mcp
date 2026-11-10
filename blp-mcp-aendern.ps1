@@ -33,11 +33,19 @@ $BAUSTEINE = [ordered]@{
   # Einzelbaustein ohne ID: GET/POST client/selection, checkout/commit/undo darunter
   # (erprobt: anhaengen, include, sortieren, ganze childs-Liste zurueckschreiben).
   "client/selection"          = @{ erprobt = $true;  text = "Auswahlbaum (Client)"; einzel = $true }
+  # Modulkonfiguration (module/<Modul-ID>, z. B. Validation, AI.Foundation): kein checkout/commit/undo (405).
+  # Speichern = POST mit dem Lesetoken aus dem GET, ist sofort festgeschrieben (neue Hauptversion).
+  # Ein veraltetes Token lehnt der Dienst ab (PRJ050007) und laesst das Modul dabei gesperrt (_locked),
+  # bis es erneut gespeichert wird (Befund 10.11.2026 am Modul Office auf Test).
+  "module"                    = @{ erprobt = $true;  text = "Modulkonfiguration"; direkt = $true }
 }
 
 # Adresse eines Bausteins relativ zum Projekt; Einzelbausteine (Auswahlbaum) haben keine ID.
 function BausteinPfad([string] $b, [string] $id) { if ($id) { "$b/$id" } else { $b } }
-function BausteinName($o, [string] $b) { if ($o.name) { $o.name } else { $BAUSTEINE[$b].text } }
+function BausteinName($o, [string] $b) {
+  if ($b -eq "module" -and $o.module_id) { $m = @(L (Modulliste) | Where-Object { $_.module_id -eq $o.module_id }); if ($m.Count) { return "$($m[0].name)" } }
+  if ($o.name) { $o.name } else { $BAUSTEINE[$b].text }
+}
 
 function Blp-Send([string] $Method, [string] $Url, [string] $Json) {
   for ($versuch = 1; $versuch -le 2; $versuch++) {
@@ -56,7 +64,13 @@ function Blp-Send([string] $Method, [string] $Url, [string] $Json) {
 }
 
 # -NoEnumerate und Rueckgabe mit Komma: sonst wird ["x"] beim Parsen und bei der Rueckgabe zu "x" entrollt.
-function JObj([string] $s) { return ,(ConvertFrom-Json -InputObject $s -Depth 100 -DateKind String -NoEnumerate) }
+function JObj([string] $s) {
+  try { return ,(ConvertFrom-Json -InputObject $s -Depth 100 -DateKind String -NoEnumerate) }
+  catch {
+    if ("$($_.Exception.Message)" -match 'AsHashTable') { throw "JSON mit Schluesseln, die sich nur in Gross-/Kleinschreibung unterscheiden - mit der Pfadsprache nicht aenderbar (nur lesen, Aenderung im Designer). $($_.Exception.Message)" }
+    throw
+  }
+}
 # Immer -InputObject: "$o | ConvertTo-Json" entrollt Listen, aus ["x"] wird "x".
 function JStr($o) { ConvertTo-Json -InputObject $o -Depth 100 -Compress }
 function Kopie($o) { if ($null -eq $o) { return $null }; JObj (JStr $o) }
@@ -206,7 +220,21 @@ function Pruefe($obj, [string] $baustein) {
       }
     }
   }
+  if ($baustein -eq "module") {
+    foreach ($p in @(L $obj.parameters.PSObject.Properties)) {
+      if ($p.Value -isnot [string]) { $fehler.Add("parameters/$($p.Name) muss Text sein (eingebettetes JSON mit /# aendern).") }
+    }
+  }
   $fehler
+}
+
+# Maskierte Werte duerfen nie zurueckgeschrieben werden: Wer eine Antwort mit *** abschreibt und als wert
+# einsetzt, wuerde Geheimnisse (credentialId, encryptionSecret, ...) durch *** ersetzen.
+function MaskenZahl([string] $s) { ([regex]::Matches($s, '\*\*\*')).Count }
+function PruefeMasken($ist, $neu) {
+  if ((MaskenZahl (JStr $neu)) -gt (MaskenZahl (JStr $ist))) {
+    throw "Ein neuer Wert enthaelt '***' - das sieht nach einem abgeschriebenen, maskierten Wert aus und wuerde Zugangsdaten oder Schluessel zerstoeren. Nur die Teile aendern, die wirklich neu sind (Pfad enger setzen)."
+  }
 }
 
 function BausteinFinden([string] $baustein, [string] $wer) {
@@ -218,6 +246,7 @@ function BausteinFinden([string] $baustein, [string] $wer) {
     "client/sidebar/tab/action" { return (Finde ((Lies "client/sidebar/tab/action").tabs) $wer "Tab")._id }
     "smartsearch" { $d = Lies "smartsearch"; $l = if ($d.lists) { $d.lists } else { $d }; return (Finde $l $wer "Suchprofil")._id }
     "role" { return (Finde ((Lies "role").roles) $wer "Rolle")._id }
+    "module" { return (ModulFinden $wer).module_id }
   }
   throw "Baustein '$baustein' wird nicht unterstuetzt: $($BAUSTEINE.Keys -join ', ')."
 }
@@ -259,7 +288,7 @@ function ZweiSchritte([string] $name, $a, [scriptblock] $pruefen, [scriptblock] 
 Werkzeug "blp_read_path" ("Liest den Wert an einem Pfad eines Bausteins (gleiche Pfadsprache wie blp_change), z. B. 'nodes/[id^=23d05bc3]/parameters/Module.Elo.ActionNode.EloAs/#/AsDefinitions/0' " +
   "oder beim Auswahlbaum (client/selection, ohne objekt) 'selections/[name=Einkauf]/childs/[name=Rechnung]'. Zum Vorbereiten von Aenderungen.") @{
   baustein = @{ type = "string"; enum = @($BAUSTEINE.Keys) }
-  objekt = @{ type = "string"; description = "ID oder Name des Bausteins (Prozess, Objekt, Tab, Suchprofil, Rolle); entfaellt bei client/selection" }
+  objekt = @{ type = "string"; description = "ID oder Name des Bausteins (Prozess, Objekt, Tab, Suchprofil, Rolle, Modul); entfaellt bei client/selection" }
   pfad = @{ type = "string" } } @("baustein", "pfad") {
   param($a)
   $id = BausteinFinden $a.baustein $a.objekt
@@ -278,6 +307,7 @@ function AenderungPlan([string] $baustein, [string] $objekt, $aenderungen, [stri
   $neu = Wende (Kopie $ist) $aenderungen
   $fehler = @(L (Pruefe $neu $baustein))
   if ($fehler.Count) { throw ("Aenderung ergaebe einen ungueltigen Baustein:`n- " + ($fehler -join "`n- ")) }
+  PruefeMasken $ist $neu
   $zeilen = foreach ($c in @(L $aenderungen)) {
     $segs = Segmente "$($c.pfad)"; $vor = Hole $ist $segs; $nach = Hole $neu $segs
     if ("$($c.aktion)" -eq "sortieren") {
@@ -292,6 +322,12 @@ function AenderungPlan([string] $baustein, [string] $objekt, $aenderungen, [stri
   $warn = @()
   if (-not $BAUSTEINE[$baustein].erprobt) { $warn += "Baustein '$baustein' wurde bisher noch nie per API geaendert - Ergebnis im Designer pruefen." }
   if ((JStr $ist) -eq (JStr $neu)) { throw "Keine Aenderung - alle Werte sind schon so." }
+  if ($BAUSTEINE[$baustein].direkt) {
+    # Gesperrt heisst bei Modulen meist: ein Speichern mit veraltetem Token ist gescheitert. Erfolgreiches Speichern hebt die Sperre auf.
+    if ($ist._locked) { $warn += "Modul steht als gesperrt von $($ist._locked_by_user) seit $($ist._locked_on) (meist ein gescheitertes Speichern). Speichern hebt die Sperre auf - vorher klaeren, ob gerade jemand im Designer an diesem Modul arbeitet." }
+    $warn += "Modulkonfigurationen kennen kein checkout/undo: Speichern ist sofort festgeschrieben (neue Hauptversion). Vorher wird eine Sicherung geschrieben; zurueck mit blp_module_restore."
+    $warn += "Die Modulkonfiguration gilt fuer das ganze Projekt, also fuer alle Prozesse, die das Modul benutzen."
+  }
   $warn += "Wirksam erst nach Veroeffentlichen im Designer."
   @{ vorschau = [ordered]@{ aktion = $(if ($aktionText) { $aktionText } else { "$($BAUSTEINE[$baustein].text) aendern" }); baustein = $baustein; id = $id; name = (BausteinName $ist $baustein); version = $ist._version; umgebung = $UMGEBUNG; aenderungen = @($zeilen) }
      warnungen = $warn; fp = "$id|$($ist._version)|$($ist._last_modified_date)"; id = $id; roh = $roh }
@@ -303,6 +339,18 @@ function AenderungAusfuehren([string] $b, $plan, $aenderungen) {
   $sich = Join-Path $SICHERUNG ("{0}-{1}-{2}-vorher.json" -f ($b -replace '/', '_'), $(if ($id) { $id } else { "einzel" }), (Get-Date).ToString("yyyyMMdd-HHmmss"))
   [IO.File]::WriteAllText($sich, $plan.roh, [Text.UTF8Encoding]::new($false))
   $ist = JObj $plan.roh
+  if ($BAUSTEINE[$b].direkt) {
+    # Modulkonfiguration: ohne checkout, direkt mit dem Lesetoken aus dem frischen GET (plan.roh) speichern.
+    $neu = Wende (Kopie $ist) $aenderungen
+    $fehler = @(L (Pruefe $neu $b)); if ($fehler.Count) { throw ("Pruefung: " + ($fehler -join "; ")) }
+    PruefeMasken $ist $neu
+    try { $null = Blp-Send "POST" (P $adr) (JStr $neu) }
+    catch {
+      $fehlerText = "$($_.Exception.Message) - nichts gespeichert."
+      try { $jetzt = JObj (Blp-Get (P $adr)); if ($jetzt._locked) { $fehlerText += " Das Modul steht jetzt als gesperrt ($($jetzt._locked_by_user)); ein erfolgreiches Speichern (neue Vorschau, dann ausfuehren) hebt das auf." } } catch {}
+      throw $fehlerText
+    }
+  } else {
   $wkText = Blp-Send "POST" (P "$adr/checkout") (JStr @{ _read_token = $ist._read_token })
   $wk = JObj $wkText
   if (-not $wk._read_token) { throw "checkout lieferte keine Arbeitskopie: $(Kurz $wkText 300)" }
@@ -318,6 +366,7 @@ function AenderungAusfuehren([string] $b, $plan, $aenderungen) {
     try { Blp-Send "POST" (P "$adr/undo") (JStr @{ _read_token = $token }) | Out-Null; $fehlerText += " (Arbeitskopie per undo verworfen)" }
     catch { $fehlerText += " (undo fehlgeschlagen: $($_.Exception.Message) - Baustein evtl. noch ausgecheckt, im Designer pruefen)" }
     throw $fehlerText
+  }
   }
   $nach = JObj (Blp-Get (P $adr)); $abweichung = @()   # mit -DateKind String, sonst wirken Datumstexte veraendert
   foreach ($c in @(L $aenderungen)) {
@@ -341,13 +390,15 @@ function AenderungAusfuehren([string] $b, $plan, $aenderungen) {
 }
 
 Werkzeug "blp_change" ("Aendert einen BLP-Baustein gezielt ueber Pfade (zweistufig: Vorschau mit bisher/neu, dann mit freigabe ausfuehren). " +
-  "Bausteine: processengine, objectmanager, client/sidebar/tab/action, smartsearch, role, client/selection (Auswahlbaum, ohne objekt). " +
+  "Bausteine: processengine, objectmanager, client/sidebar/tab/action, smartsearch, role, client/selection (Auswahlbaum, ohne objekt), " +
+  "module (Modulkonfiguration, objekt = Modulname wie Validation oder AI.Foundation; Pfad z. B. parameters/Module.Document.Processing.Config/#/validatorConfig/...; " +
+  "ohne checkout/undo sofort festgeschrieben, Sicherung vorher, zurueck mit blp_module_restore). " +
   "Pfad: Segmente mit '/', Listen per Index oder [feld=wert]/[feld^=anfang], '#' = in eingebettetes JSON, '/-' + aktion anhaengen = neues Element, " +
   "aktion sortieren = Liste am Pfad alphabetisch (de-DE) nach Feld wert (Standard display_text), z. B. selections/[name=Einkauf]/childs. " +
   "Ablauf: Sicherung, checkout, Aenderung, Pruefung (keine null in Listen, Prozessparameter nur Text), speichern, commit, nachlesen; bei Fehler undo. " +
   "Veroeffentlichen macht ein Mensch im Designer. Nur in Umgebungen mit allowChanges.") @{
   baustein = @{ type = "string"; enum = @($BAUSTEINE.Keys) }
-  objekt = @{ type = "string"; description = "ID oder Name; entfaellt bei client/selection" }
+  objekt = @{ type = "string"; description = "ID oder Name (bei module: Modulname oder Modul-ID); entfaellt bei client/selection" }
   aenderungen = @{ type = "array"; description = "Liste von {pfad, wert, aktion}"; items = @{ type = "object"; properties = @{
       pfad = @{ type = "string" }; wert = @{ description = "Neuer Wert (beliebiges JSON); entfaellt bei entfernen; bei sortieren das Feld (Standard display_text)" }
       aktion = @{ type = "string"; enum = @("setzen", "anhaengen", "entfernen", "sortieren") } }; required = @("pfad") } }

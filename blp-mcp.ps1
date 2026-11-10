@@ -41,7 +41,7 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $utf8
 $STDOUT = [Console]::Out
 
-$VERSION = "0.6.0"
+$VERSION = "0.7.0"
 $MAX_TEXT = 60000
 
 function Log([string] $m) { [Console]::Error.WriteLine("[blp-mcp] $m") }
@@ -74,9 +74,9 @@ $ZUSTAND = @{}
 $UMGEBUNG_NAME = $null
 function Setze-Umgebung([string] $name) {
   if ($script:UMGEBUNG_NAME -eq $name) { return }
-  if ($script:UMGEBUNG_NAME) { $ZUSTAND[$script:UMGEBUNG_NAME] = @{ Token = $script:Token; Prozessliste = $script:Prozessliste; Module = $script:Module; Katalog = $script:Katalog } }
+  if ($script:UMGEBUNG_NAME) { $ZUSTAND[$script:UMGEBUNG_NAME] = @{ Token = $script:Token; Prozessliste = $script:Prozessliste; Module = $script:Module; Katalog = $script:Katalog; Modulliste = $script:Modulliste } }
   $z = $ZUSTAND[$name]
-  $script:Token = $z.Token; $script:Prozessliste = $z.Prozessliste; $script:Katalog = $z.Katalog
+  $script:Token = $z.Token; $script:Prozessliste = $z.Prozessliste; $script:Katalog = $z.Katalog; $script:Modulliste = $z.Modulliste
   $script:Module = if ($z) { $z.Module } else { @{} }
   $k = $KONTEXTE[$name]
   $script:K = $k; $script:UMGEBUNG_NAME = $name
@@ -398,6 +398,7 @@ Werkzeug "blp_get" "Beliebiger lesender GET am Projektdienst (Pfad relativ zum P
 . (Join-Path $PSScriptRoot "blp-mcp-aendern.ps1")
 . (Join-Path $PSScriptRoot "blp-mcp-bilder.ps1")
 . (Join-Path $PSScriptRoot "blp-mcp-bauen.ps1")
+. (Join-Path $PSScriptRoot "blp-mcp-module.ps1")
 
 # ---------- Protokoll ----------
 
@@ -409,7 +410,8 @@ function Anleitung {
   } else { "Umgebung $UMGEBUNG, " + $(if ($AENDERN_ERLAUBT) { "lesen und aendern. " } else { "nur lesen (aendernde Werkzeuge gesperrt). " }) }) +
   "Aendernde Werkzeuge arbeiten zweistufig: erster Aufruf ohne freigabe liefert Pruefung und Vorschau (bisher/neu je Pfad) und einen Freigabe-Code; " +
   "erst der zweite Aufruf mit denselben Argumenten plus freigabe fuehrt aus. Vorschau dem Anwender zeigen und Zustimmung abwarten. " +
-  "Prozesse, Objekte, Kacheln, Tabs, Rollen, Feldverwaltung, Auswahlbaum (client/selection), Bildpaket. " +
+  "Prozesse, Objekte, Kacheln, Tabs, Rollen, Feldverwaltung, Auswahlbaum (client/selection), Bildpaket, Modulkonfigurationen (z. B. Validation, AI.Foundation; " +
+  "Speichern dort sofort festgeschrieben, ohne undo - Sicherung und blp_module_restore). " +
   "Veroeffentlichen macht ein Mensch im Designer; vorher sieht keine Sidebar eine Aenderung." +
   $(if ($K -and $K.hinweise) { " $($K.hinweise)" } else { "" })
 }

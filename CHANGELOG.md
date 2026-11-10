@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.7.0 – 2026-11-10
+
+- **Modulkonfigurationen** (Validation, AI.Foundation, AI OCR, PDF-Processor, elo, …): `blp_modules` listet die Module mit ihrer Konfiguration im Projekt, `blp_module` zeigt eine Konfiguration ausgepackt (Kurzansicht für Validation und AI.Foundation, sonst Gliederung, `voll` als Datei).
+- `blp_change` und `blp_read_path` mit `baustein: module`. Speichern ohne checkout/undo, sofort festgeschrieben; vorher Sicherung, zurück mit dem neuen `blp_module_restore`.
+- Werte mit `***` (abgeschriebene, maskierte Antworten) lehnt `blp_change` ab, damit keine Zugangsdaten oder Schlüssel überschrieben werden.
+- Klarere Meldung bei JSON mit Schlüsseln, die sich nur in Groß-/Kleinschreibung unterscheiden.
+- `docs/BLP-API.md`: Speicherweg der Modulkonfiguration, Sperre nach veraltetem Token, wo die Datenabfragen liegen.
+
 ## 0.6.0 – 2026-10-29
 
 - **Mehrere Umgebungen in einem Server**, z. B. Test und Produktiv: `-Umgebung test,produktiv`. Jedes Werkzeug hat dann den Parameter `umgebung`, ohne Angabe gilt die erste. Die Hinweise an die KI nennen alle Umgebungen und ob dort geändert werden darf.
