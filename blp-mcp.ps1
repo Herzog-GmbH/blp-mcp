@@ -41,7 +41,7 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $utf8
 $STDOUT = [Console]::Out
 
-$VERSION = "0.7.0"
+$VERSION = "0.8.0"
 $MAX_TEXT = 60000
 
 function Log([string] $m) { [Console]::Error.WriteLine("[blp-mcp] $m") }
@@ -74,9 +74,9 @@ $ZUSTAND = @{}
 $UMGEBUNG_NAME = $null
 function Setze-Umgebung([string] $name) {
   if ($script:UMGEBUNG_NAME -eq $name) { return }
-  if ($script:UMGEBUNG_NAME) { $ZUSTAND[$script:UMGEBUNG_NAME] = @{ Token = $script:Token; Prozessliste = $script:Prozessliste; Module = $script:Module; Katalog = $script:Katalog; Modulliste = $script:Modulliste } }
+  if ($script:UMGEBUNG_NAME) { $ZUSTAND[$script:UMGEBUNG_NAME] = @{ Token = $script:Token; Prozessliste = $script:Prozessliste; Module = $script:Module; Katalog = $script:Katalog; Modulliste = $script:Modulliste; Addinliste = $script:Addinliste } }
   $z = $ZUSTAND[$name]
-  $script:Token = $z.Token; $script:Prozessliste = $z.Prozessliste; $script:Katalog = $z.Katalog; $script:Modulliste = $z.Modulliste
+  $script:Token = $z.Token; $script:Prozessliste = $z.Prozessliste; $script:Katalog = $z.Katalog; $script:Modulliste = $z.Modulliste; $script:Addinliste = $z.Addinliste
   $script:Module = if ($z) { $z.Module } else { @{} }
   $k = $KONTEXTE[$name]
   $script:K = $k; $script:UMGEBUNG_NAME = $name
@@ -150,6 +150,9 @@ function FelderText($f) { (@(L $f | ForEach-Object { "$($_.name)=$($_.value)" + 
 function Maskiere([string] $t) {
   $t = [regex]::Replace($t, '("[^"\\]*(?i:pass|pwd|secret|token|credential|apikey|api_key)[^"\\]*"\s*:\s*)"[^"]*"', '$1"***"')
   $t = [regex]::Replace($t, '(\\"[^"\\]*(?i:pass|pwd|secret|token|credential|apikey|api_key)[^"\\]*\\"\s*:\s*)\\"(?:[^"\\]|\\\\)*\\"', '$1\"***\"')
+  # Verbindungszeichenfolgen (Datenabfragen: Sources/ConnectionString) ganz, wenn nicht leer - Server, Benutzer, Kennwort stecken darin.
+  $t = [regex]::Replace($t, '("[^"\\]*(?i:connectionstring)[^"\\]*"\s*:\s*)"(?:[^"\\]|\\.)+"', '$1"***"')
+  $t = [regex]::Replace($t, '(\\"[^"\\]*(?i:connectionstring)[^"\\]*\\"\s*:\s*)\\"(?:[^"\\]|\\\\)+\\"', '$1\"***\"')
   $t = [regex]::Replace($t, '(?i)((?:password|pwd|user\s*password)\s*=\s*)[^;"\\]*', '$1***')
   $t
 }
@@ -410,8 +413,8 @@ function Anleitung {
   } else { "Umgebung $UMGEBUNG, " + $(if ($AENDERN_ERLAUBT) { "lesen und aendern. " } else { "nur lesen (aendernde Werkzeuge gesperrt). " }) }) +
   "Aendernde Werkzeuge arbeiten zweistufig: erster Aufruf ohne freigabe liefert Pruefung und Vorschau (bisher/neu je Pfad) und einen Freigabe-Code; " +
   "erst der zweite Aufruf mit denselben Argumenten plus freigabe fuehrt aus. Vorschau dem Anwender zeigen und Zustimmung abwarten. " +
-  "Prozesse, Objekte, Kacheln, Tabs, Rollen, Feldverwaltung, Auswahlbaum (client/selection), Bildpaket, Modulkonfigurationen (z. B. Validation, AI.Foundation; " +
-  "Speichern dort sofort festgeschrieben, ohne undo - Sicherung und blp_module_restore). " +
+  "Prozesse, Objekte, Kacheln, Tabs, Rollen, Feldverwaltung, Auswahlbaum (client/selection), Bildpaket, Modulkonfigurationen (z. B. Validation, AI.Foundation) und Datenabfragen (SQL, GroupQueries; blp_dataquery, baustein dataquery) - " +
+  "Speichern dort sofort festgeschrieben, ohne undo - Sicherung und blp_module_restore. " +
   "Veroeffentlichen macht ein Mensch im Designer; vorher sieht keine Sidebar eine Aenderung." +
   $(if ($K -and $K.hinweise) { " $($K.hinweise)" } else { "" })
 }

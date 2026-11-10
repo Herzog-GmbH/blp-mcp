@@ -38,12 +38,17 @@ $BAUSTEINE = [ordered]@{
   # Ein veraltetes Token lehnt der Dienst ab (PRJ050007) und laesst das Modul dabei gesperrt (_locked),
   # bis es erneut gespeichert wird (Befund 10.11.2026 am Modul Office auf Test).
   "module"                    = @{ erprobt = $true;  text = "Modulkonfiguration"; direkt = $true }
+  # Datenabfragen eines Add-ins (dataquerymanager/<Modul-ID>/<Add-in-ID>, z. B. SQL, GroupQueries): gleicher Weg wie module,
+  # links nennen nur self/update/delete. id = "<Modul-ID>/<Add-in-ID>".
+  # Erprobt 10.11.2026 auf Test (SQL: Description gesetzt, v13->v14, nur diese 15 Zeichen anders; zurueck per blp_module_restore v15).
+  "dataquery"                 = @{ erprobt = $true;  text = "Datenabfragen (Add-in)"; direkt = $true }
 }
 
 # Adresse eines Bausteins relativ zum Projekt; Einzelbausteine (Auswahlbaum) haben keine ID.
-function BausteinPfad([string] $b, [string] $id) { if ($id) { "$b/$id" } else { $b } }
+function BausteinPfad([string] $b, [string] $id) { if ($b -eq "dataquery") { "dataquerymanager/$id" } elseif ($id) { "$b/$id" } else { $b } }
 function BausteinName($o, [string] $b) {
   if ($b -eq "module" -and $o.module_id) { $m = @(L (Modulliste) | Where-Object { $_.module_id -eq $o.module_id }); if ($m.Count) { return "$($m[0].name)" } }
+  if ($b -eq "dataquery" -and $o.addin_id) { $m = @(L (Addinliste) | Where-Object { $_.addin_id -eq $o.addin_id }); if ($m.Count) { return "$($m[0].modul)/$($m[0].name)" } }
   if ($o.name) { $o.name } else { $BAUSTEINE[$b].text }
 }
 
@@ -220,7 +225,7 @@ function Pruefe($obj, [string] $baustein) {
       }
     }
   }
-  if ($baustein -eq "module") {
+  if ($baustein -in "module", "dataquery") {
     foreach ($p in @(L $obj.parameters.PSObject.Properties)) {
       if ($p.Value -isnot [string]) { $fehler.Add("parameters/$($p.Name) muss Text sein (eingebettetes JSON mit /# aendern).") }
     }
@@ -247,6 +252,7 @@ function BausteinFinden([string] $baustein, [string] $wer) {
     "smartsearch" { $d = Lies "smartsearch"; $l = if ($d.lists) { $d.lists } else { $d }; return (Finde $l $wer "Suchprofil")._id }
     "role" { return (Finde ((Lies "role").roles) $wer "Rolle")._id }
     "module" { return (ModulFinden $wer).module_id }
+    "dataquery" { return (AddinFinden $wer).id }
   }
   throw "Baustein '$baustein' wird nicht unterstuetzt: $($BAUSTEINE.Keys -join ', ')."
 }
@@ -288,7 +294,7 @@ function ZweiSchritte([string] $name, $a, [scriptblock] $pruefen, [scriptblock] 
 Werkzeug "blp_read_path" ("Liest den Wert an einem Pfad eines Bausteins (gleiche Pfadsprache wie blp_change), z. B. 'nodes/[id^=23d05bc3]/parameters/Module.Elo.ActionNode.EloAs/#/AsDefinitions/0' " +
   "oder beim Auswahlbaum (client/selection, ohne objekt) 'selections/[name=Einkauf]/childs/[name=Rechnung]'. Zum Vorbereiten von Aenderungen.") @{
   baustein = @{ type = "string"; enum = @($BAUSTEINE.Keys) }
-  objekt = @{ type = "string"; description = "ID oder Name des Bausteins (Prozess, Objekt, Tab, Suchprofil, Rolle, Modul); entfaellt bei client/selection" }
+  objekt = @{ type = "string"; description = "ID oder Name des Bausteins (Prozess, Objekt, Tab, Suchprofil, Rolle, Modul, Datenabfrage-Add-in wie SQL); entfaellt bei client/selection" }
   pfad = @{ type = "string" } } @("baustein", "pfad") {
   param($a)
   $id = BausteinFinden $a.baustein $a.objekt
@@ -324,9 +330,9 @@ function AenderungPlan([string] $baustein, [string] $objekt, $aenderungen, [stri
   if ((JStr $ist) -eq (JStr $neu)) { throw "Keine Aenderung - alle Werte sind schon so." }
   if ($BAUSTEINE[$baustein].direkt) {
     # Gesperrt heisst bei Modulen meist: ein Speichern mit veraltetem Token ist gescheitert. Erfolgreiches Speichern hebt die Sperre auf.
-    if ($ist._locked) { $warn += "Modul steht als gesperrt von $($ist._locked_by_user) seit $($ist._locked_on) (meist ein gescheitertes Speichern). Speichern hebt die Sperre auf - vorher klaeren, ob gerade jemand im Designer an diesem Modul arbeitet." }
-    $warn += "Modulkonfigurationen kennen kein checkout/undo: Speichern ist sofort festgeschrieben (neue Hauptversion). Vorher wird eine Sicherung geschrieben; zurueck mit blp_module_restore."
-    $warn += "Die Modulkonfiguration gilt fuer das ganze Projekt, also fuer alle Prozesse, die das Modul benutzen."
+    if ($ist._locked) { $warn += "$($BAUSTEINE[$baustein].text) steht als gesperrt von $($ist._locked_by_user) seit $($ist._locked_on) (meist ein gescheitertes Speichern). Speichern hebt die Sperre auf - vorher klaeren, ob gerade jemand im Designer daran arbeitet." }
+    $warn += "Modulkonfigurationen und Datenabfragen kennen kein checkout/undo: Speichern ist sofort festgeschrieben (neue Hauptversion). Vorher wird eine Sicherung geschrieben; zurueck mit blp_module_restore."
+    $warn += $(if ($baustein -eq "dataquery") { "Die Datenabfragen gelten fuer das ganze Projekt, also fuer alle Prozesse, Gruppenabfragen und Objekte, die sie benutzen (Verwendung im Designer pruefen)." } else { "Die Modulkonfiguration gilt fuer das ganze Projekt, also fuer alle Prozesse, die das Modul benutzen." })
   }
   $warn += "Wirksam erst nach Veroeffentlichen im Designer."
   @{ vorschau = [ordered]@{ aktion = $(if ($aktionText) { $aktionText } else { "$($BAUSTEINE[$baustein].text) aendern" }); baustein = $baustein; id = $id; name = (BausteinName $ist $baustein); version = $ist._version; umgebung = $UMGEBUNG; aenderungen = @($zeilen) }
@@ -336,18 +342,18 @@ function AenderungPlan([string] $baustein, [string] $objekt, $aenderungen, [stri
 function AenderungAusfuehren([string] $b, $plan, $aenderungen) {
   $id = $plan.id; $adr = BausteinPfad $b $id
   New-Item -ItemType Directory -Force $SICHERUNG | Out-Null
-  $sich = Join-Path $SICHERUNG ("{0}-{1}-{2}-vorher.json" -f ($b -replace '/', '_'), $(if ($id) { $id } else { "einzel" }), (Get-Date).ToString("yyyyMMdd-HHmmss"))
+  $sich = Join-Path $SICHERUNG ("{0}-{1}-{2}-vorher.json" -f ($b -replace '/', '_'), $(if ($id) { $id -replace '/', '_' } else { "einzel" }), (Get-Date).ToString("yyyyMMdd-HHmmss"))
   [IO.File]::WriteAllText($sich, $plan.roh, [Text.UTF8Encoding]::new($false))
   $ist = JObj $plan.roh
   if ($BAUSTEINE[$b].direkt) {
-    # Modulkonfiguration: ohne checkout, direkt mit dem Lesetoken aus dem frischen GET (plan.roh) speichern.
+    # Modulkonfiguration / Datenabfragen: ohne checkout, direkt mit dem Lesetoken aus dem frischen GET (plan.roh) speichern.
     $neu = Wende (Kopie $ist) $aenderungen
     $fehler = @(L (Pruefe $neu $b)); if ($fehler.Count) { throw ("Pruefung: " + ($fehler -join "; ")) }
     PruefeMasken $ist $neu
     try { $null = Blp-Send "POST" (P $adr) (JStr $neu) }
     catch {
       $fehlerText = "$($_.Exception.Message) - nichts gespeichert."
-      try { $jetzt = JObj (Blp-Get (P $adr)); if ($jetzt._locked) { $fehlerText += " Das Modul steht jetzt als gesperrt ($($jetzt._locked_by_user)); ein erfolgreiches Speichern (neue Vorschau, dann ausfuehren) hebt das auf." } } catch {}
+      try { $jetzt = JObj (Blp-Get (P $adr)); if ($jetzt._locked) { $fehlerText += " $($BAUSTEINE[$b].text) steht jetzt als gesperrt ($($jetzt._locked_by_user)); ein erfolgreiches Speichern (neue Vorschau, dann ausfuehren) hebt das auf." } } catch {}
       throw $fehlerText
     }
   } else {
@@ -392,13 +398,15 @@ function AenderungAusfuehren([string] $b, $plan, $aenderungen) {
 Werkzeug "blp_change" ("Aendert einen BLP-Baustein gezielt ueber Pfade (zweistufig: Vorschau mit bisher/neu, dann mit freigabe ausfuehren). " +
   "Bausteine: processengine, objectmanager, client/sidebar/tab/action, smartsearch, role, client/selection (Auswahlbaum, ohne objekt), " +
   "module (Modulkonfiguration, objekt = Modulname wie Validation oder AI.Foundation; Pfad z. B. parameters/Module.Document.Processing.Config/#/validatorConfig/...; " +
-  "ohne checkout/undo sofort festgeschrieben, Sicherung vorher, zurueck mit blp_module_restore). " +
+  "ohne checkout/undo sofort festgeschrieben, Sicherung vorher, zurueck mit blp_module_restore), " +
+  "dataquery (Datenabfragen eines Add-ins, objekt = SQL, GroupQueries, OleDb ...; Pfad wie ihn blp_dataquery nennt, z. B. " +
+  "parameters/Module.DataConnect.DataQuery.SQL.Config/#/Sources/[Name=ERP-Database]/DataQueries/[Name=ERP_Customer]/DataQueryString; gleicher Speicherweg wie module). " +
   "Pfad: Segmente mit '/', Listen per Index oder [feld=wert]/[feld^=anfang], '#' = in eingebettetes JSON, '/-' + aktion anhaengen = neues Element, " +
   "aktion sortieren = Liste am Pfad alphabetisch (de-DE) nach Feld wert (Standard display_text), z. B. selections/[name=Einkauf]/childs. " +
   "Ablauf: Sicherung, checkout, Aenderung, Pruefung (keine null in Listen, Prozessparameter nur Text), speichern, commit, nachlesen; bei Fehler undo. " +
   "Veroeffentlichen macht ein Mensch im Designer. Nur in Umgebungen mit allowChanges.") @{
   baustein = @{ type = "string"; enum = @($BAUSTEINE.Keys) }
-  objekt = @{ type = "string"; description = "ID oder Name (bei module: Modulname oder Modul-ID); entfaellt bei client/selection" }
+  objekt = @{ type = "string"; description = "ID oder Name (bei module: Modulname oder Modul-ID; bei dataquery: Add-in wie SQL oder GroupQueries); entfaellt bei client/selection" }
   aenderungen = @{ type = "array"; description = "Liste von {pfad, wert, aktion}"; items = @{ type = "object"; properties = @{
       pfad = @{ type = "string" }; wert = @{ description = "Neuer Wert (beliebiges JSON); entfaellt bei entfernen; bei sortieren das Feld (Standard display_text)" }
       aktion = @{ type = "string"; enum = @("setzen", "anhaengen", "entfernen", "sortieren") } }; required = @("pfad") } }
