@@ -12,15 +12,28 @@
 $MODUL_ORDNER = Join-Path $DATEN "module"
 
 $script:Modulliste = $null
+$script:Addinliste = $null
 function Modulliste {
   if ($script:Modulliste) { return $script:Modulliste }
   $d = JObj (Blp-Get "$PROJEKT/api/v1/module")
   $mods = if ($d.modules) { $d.modules } else { $d }
   $script:Modulliste = @(L $mods | ForEach-Object { [pscustomobject]@{ module_id = "$($_.module_id)"; id = "$($_.module_id)"; name = "$($_.name)"; display_text = "$($_.display_text)"
       version = "$($_.version)"; beschreibung = "$($_.description)"; oberflaeche = "$($_.config_control.type)"; prozessoren = @(L $_.processors).Count } })
+  # Datenabfrage-Add-ins (SQL, OleDb, GroupQueries, IX Query, OData, SAP SOAP ...) haengen an ihren Modulen.
+  # id = "<Modul-ID>/<Add-in-ID>", so wie der Pfad dataquerymanager/<Modul-ID>/<Add-in-ID>.
+  $script:Addinliste = @(foreach ($m in @(L $mods)) { foreach ($ad in @(L $m.data_query_addins)) {
+    [pscustomobject]@{ id = "$($m.module_id)/$($ad.info.id)"; module_id = "$($m.module_id)"; addin_id = "$($ad.info.id)"; name = "$($ad.info.name)"
+      display_text = "$($ad.info.display_text)"; modul = "$($m.name)"; version = "$($ad.info.version)" } } })
   $script:Modulliste
 }
 function ModulFinden([string] $wer) { Finde (Modulliste) $wer "Modul" }
+function Addinliste { if ($null -eq $script:Addinliste) { $null = Modulliste }; $script:Addinliste }
+function AddinFinden([string] $wer) {
+  $l = @(Addinliste)
+  $t = @($l | Where-Object { $_.addin_id -eq $wer })
+  if ($t.Count -eq 1) { return $t[0] }
+  Finde $l $wer "Datenabfrage-Add-in"
+}
 
 # Parameterwerte sind JSON als Text; nicht-JSON bleibt Text.
 function Entpacke($v) {
@@ -137,9 +150,10 @@ Werkzeug "blp_module" ("Zeigt die Modulkonfiguration eines Moduls im Projekt (mo
   $kopf
 }
 
-Werkzeug "blp_module_restore" ("Spielt eine Sicherung einer Modulkonfiguration zurueck (zweistufig), z. B. die Datei aus dem Ergebnis von blp_change baustein=module (Datenordner\sicherung\module-<ID>-...-vorher.json). " +
-  "Ersetzt alle parameters des Moduls durch die aus der Sicherung; der Stand davor wird selbst wieder gesichert. Nur in Umgebungen mit allowChanges.") @{
-  datei = @{ type = "string"; description = "Voller Pfad der Sicherung (.json, rohes Modul-JSON mit module_id und parameters)" }
+Werkzeug "blp_module_restore" ("Spielt eine Sicherung einer Modulkonfiguration oder der Datenabfragen eines Add-ins zurueck (zweistufig), z. B. die Datei aus dem Ergebnis von blp_change baustein=module oder dataquery " +
+  "(Datenordner\sicherung\module-<ID>-...-vorher.json bzw. dataquery-<Modul-ID>_<Add-in-ID>-...-vorher.json). " +
+  "Ersetzt alle parameters durch die aus der Sicherung; der Stand davor wird selbst wieder gesichert. Nur in Umgebungen mit allowChanges.") @{
+  datei = @{ type = "string"; description = "Voller Pfad der Sicherung (.json, rohes JSON mit module_id, bei Datenabfragen addin_id, und parameters)" }
   freigabe = @{ type = "string" } } @("datei") {
   param($a)
   ZweiSchritte "blp_module_restore" $a {
@@ -148,30 +162,156 @@ Werkzeug "blp_module_restore" ("Spielt eine Sicherung einer Modulkonfiguration z
     $text = [IO.File]::ReadAllText($f)
     if ($text -match '"\*\*\*"|\\"\*\*\*\\"') { throw "Die Datei enthaelt maskierte Werte (***) - das ist keine Sicherung, sondern eine Leseansicht. Nur Dateien aus dem Ordner sicherung zurueckspielen." }
     $s = JObj $text
-    if (-not $s.module_id -or $null -eq $s.parameters) { throw "Keine Modul-Sicherung (module_id oder parameters fehlt)." }
-    $m = ModulFinden "$($s.module_id)"
-    $roh = Blp-Get (P "module/$($m.module_id)"); $ist = JObj $roh
+    if (-not $s.module_id -or $null -eq $s.parameters) { throw "Keine Sicherung einer Modulkonfiguration oder Datenabfrage (module_id oder parameters fehlt)." }
+    # Datenabfragen (dataquerymanager) tragen zusaetzlich addin_id.
+    if ($s.addin_id) { $ad = AddinFinden "$($s.addin_id)"; $m = [pscustomobject]@{ name = "$($ad.modul)/$($ad.name)"; module_id = $ad.id; adr = "dataquerymanager/$($ad.id)"; datei = "dataquery-$($ad.id -replace '/', '_')" } }
+    else { $mm = ModulFinden "$($s.module_id)"; $m = [pscustomobject]@{ name = $mm.name; module_id = $mm.module_id; adr = "module/$($mm.module_id)"; datei = "module-$($mm.module_id)" } }
+    $roh = Blp-Get (P $m.adr); $ist = JObj $roh
     $diff = @(foreach ($k in @(@($s.parameters.PSObject.Properties.Name) + @(L $ist.parameters.PSObject.Properties.Name) | Select-Object -Unique)) {
       $alt = "$($ist.parameters.$k)"; $neu = "$($s.parameters.$k)"
       if ($alt -cne $neu) { [ordered]@{ parameter = $k; jetzt = "$($alt.Length) Zeichen"; sicherung = $(if ($null -eq $s.parameters.$k) { "(fehlt - wird entfernt)" } else { "$($neu.Length) Zeichen" }) } }
     })
     if ($diff.Count -eq 0) { throw "Die Konfiguration entspricht schon der Sicherung." }
     $warn = @("Speichern ist sofort festgeschrieben (neue Hauptversion); der jetzige Stand wird vorher gesichert.", "Wirksam erst nach Veroeffentlichen im Designer.")
-    if ($ist._locked) { $warn += "Modul steht als gesperrt von $($ist._locked_by_user) - Speichern hebt das auf; vorher klaeren, ob jemand im Designer daran arbeitet." }
-    @{ vorschau = [ordered]@{ aktion = "Modulkonfiguration zuruecksetzen"; modul = $m.name; id = $m.module_id; versionJetzt = $ist._version; versionSicherung = $s._version; sicherungVom = $s._last_modified_date; umgebung = $UMGEBUNG; unterschiede = $diff }
+    if ($ist._locked) { $warn += "Steht als gesperrt von $($ist._locked_by_user) - Speichern hebt das auf; vorher klaeren, ob jemand im Designer daran arbeitet." }
+    @{ vorschau = [ordered]@{ aktion = $(if ($s.addin_id) { "Datenabfragen zuruecksetzen" } else { "Modulkonfiguration zuruecksetzen" }); modul = $m.name; id = $m.module_id; versionJetzt = $ist._version; versionSicherung = $s._version; sicherungVom = $s._last_modified_date; umgebung = $UMGEBUNG; unterschiede = $diff }
        warnungen = $warn; fp = "$($m.module_id)|$($ist._version)|$($ist._last_modified_date)|$((Get-Item -LiteralPath $f).LastWriteTimeUtc.Ticks)"; m = $m; roh = $roh; s = $s }
   } {
     param($plan)
     $ist = JObj $plan.roh
     New-Item -ItemType Directory -Force $SICHERUNG | Out-Null
-    $sich = Join-Path $SICHERUNG ("module-{0}-{1}-vorher.json" -f $plan.m.module_id, (Get-Date).ToString("yyyyMMdd-HHmmss"))
+    $sich = Join-Path $SICHERUNG ("{0}-{1}-vorher.json" -f $plan.m.datei, (Get-Date).ToString("yyyyMMdd-HHmmss"))
     [IO.File]::WriteAllText($sich, $plan.roh, [Text.UTF8Encoding]::new($false))
     $ist.parameters = $plan.s.parameters
     $fehler = @(L (Pruefe $ist "module")); if ($fehler.Count) { throw ("Pruefung: " + ($fehler -join "; ")) }
-    $null = Blp-Send "POST" (P "module/$($plan.m.module_id)") (JStr $ist)
-    $nach = JObj (Blp-Get (P "module/$($plan.m.module_id)"))
+    $null = Blp-Send "POST" (P $plan.m.adr) (JStr $ist)
+    $nach = JObj (Blp-Get (P $plan.m.adr))
     [ordered]@{ modul = $plan.m.name; versionVorher = (JObj $plan.roh)._version; versionNachher = $nach._version
       kontrolle = $(if (@(foreach ($k in @(@($plan.s.parameters.PSObject.Properties.Name) + @(L $nach.parameters.PSObject.Properties.Name) | Select-Object -Unique)) { if ("$($nach.parameters.$k)" -cne "$($plan.s.parameters.$k)") { $k } }).Count -eq 0) { "Konfiguration entspricht der Sicherung" } else { "Konfiguration weicht nach dem Speichern von der Sicherung ab - im Designer pruefen" })
       sicherung = $sich; danach = "Im Designer veroeffentlichen, erst dann wirkt die Aenderung." }
   }
 } -Schreibt
+
+# ---------- Datenabfragen (Add-ins von DataConnect, elo, OData, SAP ...) ----------
+# API (Befund 10.11.2026, BLP 6, Test; aus dem Designer-Skript):
+#   GET  project/<id>/dataquerymanager/<Modul-ID>/<Add-in-ID>   parameters { Module.DataConnect.DataQuery.SQL.Config: "<JSON als Text>" }
+#   POST dieselbe Adresse                                        speichern (wie module: links nur self/update/delete, kein checkout)
+#   GET  project/<id>/dataquerymanager/load/items                alle Abfragen aller Add-ins (nur Namen und Felder, siehe blp_dataqueries)
+#   Add-in ohne Konfiguration im Projekt liefert {} (OleDb, IX Query, OData, SAP SOAP auf Test).
+# SQL/OleDb: Sources[] { Name, LoginProfile, ConnectionString, DataQueries[] { Name, DataQueryString, FieldMappings[] { FieldName, MappingName } }, DataWriters }
+# GroupQueries: Queries[] { Name, NoOfIndexField, ExecutionMode, Queries[] { ModuleName, QueryName, Condition, ConditionFieldMapping }, Columns[] { Name, UseColumn, Filter, Function, QueryColumns[] } }
+
+function AbfrageKonfig($ad) {
+  $roh = Blp-Get (P "dataquerymanager/$($ad.id)"); $o = JObj $roh
+  $schl = @(L $o.parameters.PSObject.Properties | ForEach-Object { $_.Name }) | Select-Object -First 1
+  [pscustomobject]@{ ad = $ad; o = $o; schluessel = $schl; inhalt = $(if ($schl) { Entpacke $o.parameters.$schl } else { $null }) }
+}
+
+# Pfadsegment fuer ein Listenelement: [Name=...] wenn eindeutig und ohne '/', sonst Index.
+function ListenSeg($liste, [int] $i, [string] $feld = "Name") {
+  $n = "$($liste[$i].$feld)"
+  if ($n -and $n -notmatch '[/\]]' -and @(L $liste | Where-Object { "$($_.$feld)" -eq $n }).Count -eq 1) { "[$feld=$n]" } else { "$i" }
+}
+
+# Alle Abfragen eines Add-ins mit Vollname (SQL: "<Quelle>.<Abfrage>" wie in blp_dataqueries) und Pfad.
+function AbfragenVon($k) {
+  $w = $k.inhalt; $basis = "parameters/$($k.schluessel)/#"
+  if ($w -isnot [System.Management.Automation.PSCustomObject]) { return }
+  if ($null -ne $w.Sources) {
+    $src = @(L $w.Sources)
+    for ($i = 0; $i -lt $src.Count; $i++) { $s = $src[$i]; $dq = @(L $s.DataQueries)
+      for ($j = 0; $j -lt $dq.Count; $j++) {
+        [pscustomobject]@{ art = "quelle"; name = "$($dq[$j].Name)"; voll = "$($s.Name).$($dq[$j].Name)"; quelle = $s; q = $dq[$j]
+          pfad = "$basis/Sources/$(ListenSeg $src $i)/DataQueries/$(ListenSeg $dq $j)" } } }
+  } elseif ($null -ne $w.Queries) {
+    $ql = @(L $w.Queries)
+    for ($i = 0; $i -lt $ql.Count; $i++) { [pscustomobject]@{ art = "gruppe"; name = "$($ql[$i].Name)"; voll = "$($ql[$i].Name)"; q = $ql[$i]; pfad = "$basis/Queries/$(ListenSeg $ql $i)" } }
+  }
+}
+
+function AbfrageDetail($k, $a, $alle) {
+  $q = $a.q
+  $r = [ordered]@{ addin = "$($k.ad.modul)/$($k.ad.name)"; name = $a.voll; version = $k.o._version; geaendert = $k.o._last_modified_date; von = $k.o._last_author }
+  if ($a.art -eq "quelle") {
+    $r.quelle = "$($a.quelle.Name)"; $r.anmeldeprofil = $(if ($a.quelle.LoginProfile) { "$($a.quelle.LoginProfile)" } else { "(keins)" })
+    if ("$($a.quelle.ConnectionString)") { $r.verbindung = "eigene Verbindungszeichenfolge (ausgeblendet)" }
+    if ("$($q.Description)") { $r.beschreibung = "$($q.Description)" }
+    $r.sql = "$($q.DataQueryString)"
+    $r.schreibend = [bool] $q.IsWriteCommand; $r.parameter = [bool] $q.UseParameters; $r.nurDbFelder = [bool] $q.ContainsOnlyDbFields
+    $r.mehrfachwerte = $(if ($q.MultiValueEnabled) { "an, Trenner '$($q.MultiValueDelimiter)'" } else { "aus" })
+    $r.felder = @(L $q.FieldMappings | ForEach-Object { "$($_.FieldName) <- $($_.MappingName)" })
+    $andere = @($q.PSObject.Properties.Name | Where-Object { $_ -notin "Id", "Name", "Description", "DataQueryString", "IsWriteCommand", "MultiValueEnabled", "MultiValueDelimiter", "UseParameters", "ContainsOnlyDbFields", "FieldMappings" })
+    if ($andere.Count) { $r.weitereFelder = $andere }
+    # Wer benutzt die Abfrage? Gruppenabfragen, die sie als Teilabfrage nennen.
+    $nutzer = @(foreach ($g in @($alle | Where-Object { $_.art -eq "gruppe" })) { if (@(L $g.q.Queries | Where-Object { "$($_.QueryName)" -eq $a.voll -and "$($_.ModuleName)" -eq $k.ad.name }).Count) { $g.voll } })
+    if ($nutzer.Count) { $r.inGruppenabfragen = $nutzer }
+    $r.pfade = [ordered]@{ abfrage = $a.pfad; sql = "$($a.pfad)/DataQueryString"; feld = "$($a.pfad)/FieldMappings/[FieldName=<Feld>]/MappingName"; neuesFeld = "$($a.pfad)/FieldMappings/- (aktion anhaengen, wert {FieldName, MappingName})" }
+  } else {
+    if ("$($q.Description)") { $r.beschreibung = "$($q.Description)" }
+    $r.indexfelder = $q.NoOfIndexField; $r.ausfuehrung = $q.ExecutionMode
+    if ("$($q.MultiValueDelimiter)$($q.MultiValuePrefix)$($q.MultiValuePostfix)") { $r.mehrfachwerte = "Praefix '$($q.MultiValuePrefix)', Trenner '$($q.MultiValueDelimiter)', Suffix '$($q.MultiValuePostfix)'" }
+    $r.teilabfragen = @(L $q.Queries | ForEach-Object { $t = [ordered]@{ abfrage = "$($_.ModuleName): $($_.QueryName)" }
+      if ("$($_.Condition)") { $t.bedingung = "$($_.Condition)" }
+      $z = @(L $_.ConditionFieldMapping.PSObject.Properties | ForEach-Object { "$($_.Name)=$($_.Value)" }); if ($z.Count) { $t.zuordnung = $z -join ", " }
+      $t })
+    $r.spalten = @(L $q.Columns | ForEach-Object { $c = $_
+      $s = "$($c.Name) <- " + ((@(L $c.QueryColumns | ForEach-Object { "$($_.Query).$($_.Name)" })) -join " | ")
+      if (-not $c.UseColumn) { $s += " (aus)" }; if ("$($c.Filter)") { $s += " Filter: $($c.Filter)" }; if ($c.Function) { $s += " Funktion $($c.Function)" }
+      $s })
+    $r.pfade = [ordered]@{ abfrage = $a.pfad; teilabfrage = "$($a.pfad)/Queries/[QueryName=<Abfrage>]/..."; spalte = "$($a.pfad)/Columns/[Name=<Spalte>]/UseColumn | Filter | QueryColumns" }
+  }
+  $r.hinweis = "Aendern mit blp_change baustein=dataquery objekt=$($k.ad.name) und einem Pfad von oben (zweistufig, sofort festgeschrieben, Sicherung vorher, zurueck mit blp_module_restore)."
+  $r
+}
+
+Werkzeug "blp_dataquery" ("Zeigt Datenabfragen mit Inhalt: SQL-Text, Feldzuordnung, Schalter, Quelle und Anmeldeprofil (SQL/OleDb) bzw. Teilabfragen und Spalten (GroupQueries), mit Pfaden fuer blp_change baustein=dataquery. " +
+  "Ohne abfrage: Uebersicht je Add-in (Quellen und Abfragenamen). Verbindungszeichenfolgen und Zugangsdaten werden nicht gezeigt. Nur Namen und Felder aller Abfragen: blp_dataqueries.") @{
+  abfrage = @{ type = "string"; description = "Optional: Name wie in blp_dataqueries, z. B. 'ERP-Database.ERP_Customer' oder 'Customer' (GroupQueries); auch Namensteil" }
+  addin = @{ type = "string"; description = "Optional: Add-in (SQL, GroupQueries, OleDb, 'IX Query', OData, 'SAP SOAP') oder Add-in-ID" }
+  voll = @{ type = "boolean"; description = "Ganze Konfiguration des Add-ins (ausgepackt, maskiert; grosse als Datei)" } } @() {
+  param($a)
+  $ads = if ($a.addin) { @(AddinFinden "$($a.addin)") } else { @(Addinliste) }
+  $konf = @(foreach ($ad in $ads) { try { AbfrageKonfig $ad } catch { [pscustomobject]@{ ad = $ad; fehler = (Kurz "$($_.Exception.Message)" 200) } } })
+  if ($a.voll) {
+    if ($konf.Count -ne 1) { throw "voll nur mit addin (z. B. addin: SQL)." }
+    $k = $konf[0]; if ($k.fehler) { throw $k.fehler }
+    $kopf = [ordered]@{ addin = "$($k.ad.modul)/$($k.ad.name)"; id = $k.ad.id; version = $k.o._version; geaendert = $k.o._last_modified_date; von = $k.o._last_author }
+    if (-not $k.schluessel) { $kopf.hinweis = "Dieses Add-in hat im Projekt keine Konfiguration."; return $kopf }
+    $text = Maskiere (ConvertTo-Json -InputObject $k.inhalt -Depth 100)
+    if ($text.Length -le 50000) { $kopf.schluessel = $k.schluessel; $kopf.inhalt = $k.inhalt; return $kopf }
+    New-Item -ItemType Directory -Force $MODUL_ORDNER | Out-Null
+    $datei = Join-Path $MODUL_ORDNER ("dataquery-{0}-v{1}-{2}.json" -f ($k.ad.name -replace '[^\w.-]', '_'), $k.o._version, (Get-Date).ToString("yyyyMMdd-HHmmss"))
+    [IO.File]::WriteAllText($datei, $text, [Text.UTF8Encoding]::new($false))
+    $kopf.datei = $datei; $kopf.zeichen = $text.Length; $kopf.gliederung = Gliederung $k.inhalt 3
+    $kopf.hinweis = "Zu gross fuer die Antwort - ganze Konfiguration (maskiert, nur zum Lesen) in der Datei. Einzelne Abfragen mit abfrage, Teile mit blp_read_path baustein=dataquery."
+    return $kopf
+  }
+  $alle = @(foreach ($k in $konf) { if (-not $k.fehler) { foreach ($x in @(AbfragenVon $k)) { $x | Add-Member -NotePropertyName k -NotePropertyValue $k -PassThru } } })
+  if ($a.abfrage) {
+    $w = "$($a.abfrage)"
+    $t = @($alle | Where-Object { $_.voll -eq $w })
+    if ($t.Count -eq 0) { $t = @($alle | Where-Object { $_.name -eq $w }) }
+    if ($t.Count -eq 0) { $t = @($alle | Where-Object { $_.voll -like "*$w*" }) }
+    if ($t.Count -eq 0) { throw "Datenabfrage nicht gefunden: $w" }
+    if ($t.Count -gt 1) { throw "Datenabfrage mehrdeutig: " + (($t | Select-Object -First 20 | ForEach-Object { "$($_.k.ad.name): $($_.voll)" }) -join ", ") + " - vollen Namen oder addin angeben." }
+    return (AbfrageDetail $t[0].k $t[0] $alle)
+  }
+  $liste = @(foreach ($k in $konf) {
+    $o = [ordered]@{ addin = $k.ad.name; modul = $k.ad.modul; id = $k.ad.id }
+    if ($k.fehler) { $o.fehler = $k.fehler; $o; continue }
+    if (-not $k.schluessel) { $o.konfiguration = "keine"; $o; continue }
+    $o.version = $k.o._version; $o.geaendert = $k.o._last_modified_date; $o.von = $k.o._last_author
+    if ($k.o._locked) { $o.gesperrt = "$($k.o._locked_by_user) seit $($k.o._locked_on)" }
+    $w = $k.inhalt
+    if ($w -is [System.Management.Automation.PSCustomObject] -and $null -ne $w.Sources) {
+      $o.quellen = @(L $w.Sources | ForEach-Object { $q = [ordered]@{ name = "$($_.Name)"; anmeldeprofil = [bool] $_.LoginProfile }
+        if ("$($_.ConnectionString)") { $q.verbindung = "eigene Verbindungszeichenfolge" }
+        $q.abfragen = @(L $_.DataQueries | ForEach-Object { "$($_.Name)$(if ($_.IsWriteCommand) { ' (schreibend)' })" })
+        if (@(L $_.DataWriters).Count) { $q.schreiber = @(L $_.DataWriters).Count }
+        $q })
+    } elseif ($w -is [System.Management.Automation.PSCustomObject] -and $null -ne $w.Queries) {
+      $o.gruppenabfragen = @(L $w.Queries | ForEach-Object { "$($_.Name) ($(@(L $_.Queries).Count) Teilabfragen)" })
+    } else { $o.gliederung = Gliederung $w 3 }
+    $o })
+  [ordered]@{ addins = $liste; hinweis = "Einzelheiten mit abfrage (z. B. 'ERP-Database.ERP_Customer'); aendern mit blp_change baustein=dataquery." }
+}

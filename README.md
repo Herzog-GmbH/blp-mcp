@@ -129,6 +129,7 @@ Zugangsdaten stehen **nie** in der Konfiguration, sondern in der DPAPI-Datei aus
 | `blp_roles` | Rollen und Situationen mit Tabs an/aus; mit `rolle` die Kacheln je Tab |
 | `blp_fields` | Feldverwaltung: Parameter, Variablen, Datenfelder |
 | `blp_dataqueries` | Datenabfragen (Name, Modul, Bedingungs- und Ergebnisfelder, ohne Verbindungsdaten) |
+| `blp_dataquery` | Datenabfragen mit Inhalt: SQL-Text, Feldzuordnung, Schalter, Quelle und Anmeldeprofil (SQL/OleDb), Teilabfragen und Spalten (GroupQueries), mit Pfaden zum Ändern; ohne `abfrage` die Übersicht je Add-in; Verbindungszeichenfolgen ausgeblendet |
 | `blp_selection` | Auswahlbaum des Clients (`client/selection`): Bereich › Dokument › Prozess › Felder, je Bereich ob sortiert |
 | `blp_images` | Bildpaket: Container mit Bildern; mit `bild` auch, wo ein Bild benutzt wird |
 | `blp_published` | letzte Veröffentlichung am Client-Dienst |
@@ -144,8 +145,8 @@ Namen findet der Server tolerant: ID, exakter Name oder Anzeigetext, dann „Nam
 
 | Werkzeug | Zweck |
 |---|---|
-| `blp_change` | Baustein gezielt ändern: Liste von `{pfad, wert, aktion}`. Freigegeben für `processengine`, `objectmanager`, `client/sidebar/tab/action`, `smartsearch`, `role`, `client/selection`, `module` (siehe [Modulkonfiguration](#modulkonfiguration)) |
-| `blp_module_restore` | Sicherung einer Modulkonfiguration zurückspielen (der Stand davor wird wieder gesichert) |
+| `blp_change` | Baustein gezielt ändern: Liste von `{pfad, wert, aktion}`. Freigegeben für `processengine`, `objectmanager`, `client/sidebar/tab/action`, `smartsearch`, `role`, `client/selection`, `module` (siehe [Modulkonfiguration](#modulkonfiguration)), `dataquery` (siehe [Datenabfragen](#datenabfragen)) |
+| `blp_module_restore` | Sicherung einer Modulkonfiguration oder der Datenabfragen eines Add-ins zurückspielen (der Stand davor wird wieder gesichert) |
 | `blp_create_process` | neuer Prozess als Kopie eines vorhandenen, optional mit Pfad-Änderungen an der Kopie |
 | `blp_create_tab` | neuer, leerer Sidebar-Tab |
 | `blp_add_tile` | neue Kachel an Tab oder Geschäftsobjekt als Kopie einer Vorlage-Kachel (Aktion, Bilder, Farbe), mit eigenem Namen und Änderungen |
@@ -171,6 +172,17 @@ Anders als bei den übrigen Bausteinen:
 - Die Konfiguration gilt für das ganze Projekt, also für alle Prozesse, die das Modul benutzen.
 - Werte mit `***` werden abgelehnt: Wer eine maskierte Antwort abschreibt und zurückschreibt, würde Zugangsdaten oder Schlüssel zerstören. Pfad so eng setzen, dass nur das Geänderte drinsteht.
 - Konfigurationen mit Schlüsseln, die sich nur in Groß-/Kleinschreibung unterscheiden (z. B. Office), zeigt `blp_module` an, ändern geht dort nur im Designer.
+
+### Datenabfragen
+
+Die SQL-, OleDb- und Gruppenabfragen (und die Abfragen der Add-ins IX Query, OData, SAP SOAP) liegen je Add-in unter `dataquerymanager/<Modul-ID>/<Add-in-ID>`, nicht in der Modulkonfiguration. `blp_dataquery` zeigt eine Abfrage samt Pfaden, `blp_change` mit `baustein: dataquery` und `objekt` = Add-in (`SQL`, `GroupQueries`, …) ändert sie:
+
+```json
+{ "baustein": "dataquery", "objekt": "SQL",
+  "aenderungen": [ { "pfad": "parameters/Module.DataConnect.DataQuery.SQL.Config/#/Sources/[Name=ERP-Database]/DataQueries/[Name=ERP_Customer]/DataQueryString", "wert": "SELECT ..." } ] }
+```
+
+Es gilt dasselbe wie bei der Modulkonfiguration: kein checkout und kein undo, Sicherung vorher, zurück mit `blp_module_restore`. Werte mit `***` werden abgelehnt. Eine geänderte SQL-Abfrage wirkt in allen Gruppenabfragen und Prozessen, die sie benutzen (`blp_dataquery` nennt die Gruppenabfragen). Zugangsdaten hängen über das Anmeldeprofil am Credential Store und werden hier weder gezeigt noch geändert.
 
 ## So läuft eine Änderung
 
@@ -259,7 +271,7 @@ Format, Beispiele und Fallen: [`docs/USAGE.md`](docs/USAGE.md#bauplan).
 
 ## Entwickeln
 
-Der Server besteht aus `blp-mcp.ps1` (Protokoll, Anmeldung, Lesewerkzeuge) und den per Dot-Sourcing eingebundenen Dateien `blp-mcp-konfig.ps1`, `blp-mcp-aendern.ps1` (Pfadsprache, Ändern, Neuanlage), `blp-mcp-bilder.ps1` (Bildpaket), `blp-mcp-bauen.ps1` (Bauplan, Geschäftsobjekt anlegen) und `blp-mcp-module.ps1` (Modulkonfiguration). Testlauf ohne MCP-Client:
+Der Server besteht aus `blp-mcp.ps1` (Protokoll, Anmeldung, Lesewerkzeuge) und den per Dot-Sourcing eingebundenen Dateien `blp-mcp-konfig.ps1`, `blp-mcp-aendern.ps1` (Pfadsprache, Ändern, Neuanlage), `blp-mcp-bilder.ps1` (Bildpaket), `blp-mcp-bauen.ps1` (Bauplan, Geschäftsobjekt anlegen) und `blp-mcp-module.ps1` (Modulkonfiguration, Datenabfragen). Testlauf ohne MCP-Client:
 
 ```powershell
 python -I test-blp-mcp.py beispiel-aufrufe.json
