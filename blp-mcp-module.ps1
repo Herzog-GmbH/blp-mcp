@@ -1,6 +1,7 @@
 # blp-mcp-module.ps1 - Modulkonfigurationen (Validation, AI.Foundation, AI OCR, PDF-Processor, elo, ...) lesen und zuruecksetzen.
 # Wird von blp-mcp.ps1 per Dot-Sourcing eingebunden (nutzt Lies, Blp-Get, Finde, L, Kurz, Werkzeug, Maskiere,
-# JObj, JStr, ZweiSchritte, Blp-Send, Protokoll aus blp-mcp-aendern.ps1). Aendern laeuft ueber blp_change baustein=module.
+# JObj, JStr, ZweiSchritte, Blp-Send, Protokoll aus blp-mcp-aendern.ps1, Entpacke aus blp-mcp-bauen.ps1 - darum nach diesen laden).
+# Aendern laeuft ueber blp_change baustein=module bzw. dataquery.
 #
 # API (Befund 10.11.2026, BLP 6, Test):
 #   GET /api/v1/module                         alle Module mit Prozessoren (Software, nicht Projekt)
@@ -35,16 +36,9 @@ function AddinFinden([string] $wer) {
   Finde $l $wer "Datenabfrage-Add-in"
 }
 
-# Parameterwerte sind JSON als Text; nicht-JSON bleibt Text.
-function Entpacke($v) {
-  if ($v -is [string] -and ($v.TrimStart().StartsWith("{") -or $v.TrimStart().StartsWith("["))) {
-    try { return ,(JObj $v) } catch {}
-    # Schluessel, die sich nur in Gross-/Kleinschreibung unterscheiden (z. B. Office: IntrusionBarValue/IntrusionBarvalue),
-    # gehen nur als Hashtable - zum Anzeigen reicht das, Pfad-Aenderungen darin gehen nicht.
-    try { return ,(ConvertFrom-Json -InputObject $v -Depth 100 -DateKind String -NoEnumerate -AsHashtable) } catch {}
-  }
-  ,$v
-}
+# Parameterwerte sind JSON als Text: Entpacke aus blp-mcp-bauen.ps1. Schluessel, die sich nur in Gross-/Kleinschreibung
+# unterscheiden (z. B. Office: IntrusionBarValue/IntrusionBarvalue), kommen dort als Hashtable zurueck - zum Anzeigen
+# reicht das, Pfad-Aenderungen darin gehen nicht.
 
 # Gliederung eines beliebigen JSON: Schluessel mit Art und Groesse, Listen mit Anzahl und Namen der Eintraege.
 function Gliederung($o, [int] $tiefe = 3) {

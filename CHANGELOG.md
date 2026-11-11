@@ -1,11 +1,14 @@
 # Änderungen
 
-## 0.8.0 – 2026-11-10
+## 0.8.0 – 2026-11-11
+
+Erstes Release seit 0.6.0, enthält auch 0.7.0 (Pull Requests #1 und #2).
 
 - **Datenabfragen mit Inhalt:** `blp_dataquery` zeigt eine Abfrage mit SQL-Text, Feldzuordnung, Schaltern, Quelle und Anmeldeprofil (SQL, OleDb) bzw. Teilabfragen und Spalten (GroupQueries), dazu die Gruppenabfragen, die eine SQL-Abfrage benutzen, und die Pfade zum Ändern. Ohne `abfrage` die Übersicht je Add-in.
 - `blp_change` und `blp_read_path` mit `baustein: dataquery` (`objekt` = Add-in wie SQL oder GroupQueries). Gespeichert wird wie bei der Modulkonfiguration ohne checkout/undo, vorher Sicherung; `blp_module_restore` spielt auch Sicherungen von Datenabfragen zurück.
 - Verbindungszeichenfolgen (`ConnectionString`) werden in allen Antworten ausgeblendet.
 - `docs/BLP-API.md`: `dataquerymanager/<Modul-ID>/<Add-in-ID>` und wie der Designer die Add-in-Seiten versorgt.
+- Aufgeräumt: `Entpacke` gibt es nur noch einmal (in `blp-mcp-bauen.ps1`); die gleichlautende Kopie in `blp-mcp-module.ps1` hat sie beim Laden überschrieben.
 
 ## 0.7.0 – 2026-11-10
 
