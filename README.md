@@ -135,6 +135,8 @@ Zugangsdaten stehen **nie** in der Konfiguration, sondern in der DPAPI-Datei aus
 | `blp_read_path` | Wert an einem Pfad lesen (zum Vorbereiten einer Änderung) |
 | `blp_get` | beliebiger lesender GET am Projekt- oder Client-Dienst (nur Pfade, keine fremden Adressen) |
 | `blp_process_export` | Prozess als [Bauplan](#bauplan) (JSON); große Baupläne als Datei. Ohne `prozess`: Liste der Bausteine (Prozessoren aller Module) mit ihren Ausgängen |
+| `blp_modules` | Module mit Softwareversion und ihrer Modulkonfiguration im Projekt (Version, letzte Änderung, Parameter-Schlüssel und Größe, Sperre) |
+| `blp_module` | Modulkonfiguration eines Moduls, eingebettetes JSON ausgepackt. Kurzansicht für Validation (Dokumenttypen, Blöcke, Felder, Regeln) und AI.Foundation (Prompts, Modellprofile, Anbieter), sonst Gliederung; `voll` = alles, große Konfigurationen als Datei (maskiert) |
 
 Namen findet der Server tolerant: ID, exakter Name oder Anzeigetext, dann „Name (Zusatz)“, dann Namensteil. Bei mehreren Treffern kommt die Liste zurück.
 
@@ -142,7 +144,8 @@ Namen findet der Server tolerant: ID, exakter Name oder Anzeigetext, dann „Nam
 
 | Werkzeug | Zweck |
 |---|---|
-| `blp_change` | Baustein gezielt ändern: Liste von `{pfad, wert, aktion}`. Freigegeben für `processengine`, `objectmanager`, `client/sidebar/tab/action`, `smartsearch`, `role`, `client/selection` |
+| `blp_change` | Baustein gezielt ändern: Liste von `{pfad, wert, aktion}`. Freigegeben für `processengine`, `objectmanager`, `client/sidebar/tab/action`, `smartsearch`, `role`, `client/selection`, `module` (siehe [Modulkonfiguration](#modulkonfiguration)) |
+| `blp_module_restore` | Sicherung einer Modulkonfiguration zurückspielen (der Stand davor wird wieder gesichert) |
 | `blp_create_process` | neuer Prozess als Kopie eines vorhandenen, optional mit Pfad-Änderungen an der Kopie |
 | `blp_create_tab` | neuer, leerer Sidebar-Tab |
 | `blp_add_tile` | neue Kachel an Tab oder Geschäftsobjekt als Kopie einer Vorlage-Kachel (Aktion, Bilder, Farbe), mit eigenem Namen und Änderungen |
@@ -151,7 +154,23 @@ Namen findet der Server tolerant: ID, exakter Name oder Anzeigetext, dann „Nam
 | `blp_image_upload` | PNGs ins Bildpaket laden und optional gleich an Kachel (24/32/64 px) oder Tab (24 px) hängen |
 | `blp_image_remove` | Bilder aus einem Container nehmen; verweigert, solange sie noch benutzt werden; `endgueltig` löscht auch die Datei |
 
-Bewusst **nicht** dabei: Veröffentlichen, Löschen ganzer Bausteine, Modulkonfiguration (dort ist Speichern sofort Festschreiben).
+Bewusst **nicht** dabei: Veröffentlichen, Löschen ganzer Bausteine.
+
+### Modulkonfiguration
+
+Die Konfiguration eines Moduls im Projekt (`module/<Modul-ID>`, z. B. Validation, AI.Foundation, AI OCR, PDF-Processor, elo) ändert `blp_change` mit `baustein: module` und `objekt` = Modulname. Die Werte unter `parameters` sind JSON als Text, also mit `#` hinein:
+
+```json
+{ "baustein": "module", "objekt": "Validation",
+  "aenderungen": [ { "pfad": "parameters/Module.Document.Processing.Config/#/validatorConfig/documentTypes/[key=purchase_invoice_data_f2v]/displayName", "wert": "Eingangsrechnung" } ] }
+```
+
+Anders als bei den übrigen Bausteinen:
+
+- **Kein checkout, kein undo.** Speichern ist sofort festgeschrieben (neue Hauptversion). Vorher schreibt der Server eine Sicherung; `blp_module_restore` mit dieser Datei setzt zurück.
+- Die Konfiguration gilt für das ganze Projekt, also für alle Prozesse, die das Modul benutzen.
+- Werte mit `***` werden abgelehnt: Wer eine maskierte Antwort abschreibt und zurückschreibt, würde Zugangsdaten oder Schlüssel zerstören. Pfad so eng setzen, dass nur das Geänderte drinsteht.
+- Konfigurationen mit Schlüsseln, die sich nur in Groß-/Kleinschreibung unterscheiden (z. B. Office), zeigt `blp_module` an, ändern geht dort nur im Designer.
 
 ## So läuft eine Änderung
 
@@ -240,7 +259,7 @@ Format, Beispiele und Fallen: [`docs/USAGE.md`](docs/USAGE.md#bauplan).
 
 ## Entwickeln
 
-Der Server besteht aus `blp-mcp.ps1` (Protokoll, Anmeldung, Lesewerkzeuge) und den per Dot-Sourcing eingebundenen Dateien `blp-mcp-konfig.ps1`, `blp-mcp-aendern.ps1` (Pfadsprache, Ändern, Neuanlage), `blp-mcp-bilder.ps1` (Bildpaket) und `blp-mcp-bauen.ps1` (Bauplan, Geschäftsobjekt anlegen). Testlauf ohne MCP-Client:
+Der Server besteht aus `blp-mcp.ps1` (Protokoll, Anmeldung, Lesewerkzeuge) und den per Dot-Sourcing eingebundenen Dateien `blp-mcp-konfig.ps1`, `blp-mcp-aendern.ps1` (Pfadsprache, Ändern, Neuanlage), `blp-mcp-bilder.ps1` (Bildpaket), `blp-mcp-bauen.ps1` (Bauplan, Geschäftsobjekt anlegen) und `blp-mcp-module.ps1` (Modulkonfiguration). Testlauf ohne MCP-Client:
 
 ```powershell
 python -I test-blp-mcp.py beispiel-aufrufe.json
