@@ -2,8 +2,8 @@
   "manifest_version": "0.3",
   "name": "blp-mcp",
   "display_name": "BLP-MCP-Server",
-  "version": "0.8.0",
-  "description": "ACTIWARE Business Logic Provider (ELO-Sidebar) für die KI: Prozesse, Objekte, Tabs, Kacheln, Rollen lesen und gezielt ändern, mit Vorschau und Freigabe.",
+  "version": "0.9.0",
+  "description": "ACTIWARE Business Logic Provider (ELO-Sidebar) für die KI: Prozesse, Objekte, Tabs, Kacheln, Rollen lesen und gezielt ändern, mit Vorschau und Freigabe; Laufberichte und Suche im ganzen Projekt.",
   "long_description": "Ein MCP-Server für den **BLP (ACTIWARE Business Logic Provider)**, das Werkzeug, mit dem ihr die Sidebar eures ELO-Clients baut. Er spricht dieselbe REST-API wie der Web-Designer und meldet sich mit einem Konto an, das Designer-Rechte hat (oft der BLP-eigene admin).\n\n**Zwei Umgebungen:** In den Einstellungen tragt ihr Umgebung 1 (z. B. Test) und optional Umgebung 2 (z. B. Produktiv) ein, jede mit eigenen Adressen, Projekt-ID, Zugangsdatei und eigenem Schalter fürs Ändern. Jedes Werkzeug hat dann den Parameter `umgebung`, ohne Angabe gilt Umgebung 1.\n\n**Adressen:** Identity-Dienst (Anmeldung) ist Pflicht. Projektdienst und Client-Dienst leer lassen, wenn sie auf demselben Server einen bzw. acht Ports über dem Identity-Dienst liegen (…01 → …02 und …09).\n\n**Zugangsdaten** stehen nie in den Einstellungen. Nach dem ersten Einschalten fragt ihr die KI nach `blp_whoami`: Fehlen die Zugangsdaten, nennt die Antwort den genauen Befehl, z. B.\n\n`pwsh -File \"…\\Set-BlpCredential.ps1\" -Umgebung test`\n\nDen führt ihr einmal je Umgebung selbst in einer Konsole aus. Das Skript liegt im Ordner der Erweiterung, fragt Benutzer und Passwort verdeckt ab, verschlüsselt sie per DPAPI für euer Windows-Konto und zeigt nach der Anmeldung die Projekte mit ID. Alternativ eine vorhandene Zugangsdatei in den Einstellungen wählen.\n\n**Voraussetzungen:** Windows 10/11 mit PowerShell 7.5 oder neuer (`pwsh` im PATH, z. B. `winget install Microsoft.PowerShell`), BLP mit Web-Designer (getestet mit BLP 6).\n\n**Ändern** ist je Umgebung aus, bis ihr es einschaltet. Jede Änderung kommt zuerst als Vorschau (bisher/neu) und läuft nur mit einem Freigabe-Code, vorher wird gesichert. Veröffentlichen macht ein Mensch im Designer.\n\nKein Produkt der ACTIWARE GmbH oder der ELO Digital Office GmbH. Business Logic Provider ist ein Produkt der ACTIWARE GmbH, ELO ist eine Marke der ELO Digital Office GmbH.",
   "author": {
     "name": "Herzog-GmbH",
@@ -31,6 +31,7 @@
         "BLP_MCPB_PROJECT_ID": "${user_config.project_id}",
         "BLP_MCPB_PROJECT_URL": "${user_config.project_url}",
         "BLP_MCPB_CLIENT_URL": "${user_config.client_url}",
+        "BLP_MCPB_REPORT_URL": "${user_config.report_url}",
         "BLP_MCPB_CREDENTIAL_FILE": "${user_config.credential_file}",
         "BLP_MCPB_AENDERN": "${user_config.aendern}",
         "BLP_MCPB_NAME2": "${user_config.name2}",
@@ -38,6 +39,7 @@
         "BLP_MCPB_PROJECT_ID2": "${user_config.project_id2}",
         "BLP_MCPB_PROJECT_URL2": "${user_config.project_url2}",
         "BLP_MCPB_CLIENT_URL2": "${user_config.client_url2}",
+        "BLP_MCPB_REPORT_URL2": "${user_config.report_url2}",
         "BLP_MCPB_CREDENTIAL_FILE2": "${user_config.credential_file2}",
         "BLP_MCPB_AENDERN2": "${user_config.aendern2}",
         "BLP_MCPB_ZERTIFIKAT_IGNORIEREN": "${user_config.zertifikat_ignorieren}",
@@ -78,6 +80,12 @@
       "type": "string",
       "title": "Umgebung 1: Client-Dienst (optional)",
       "description": "Liefert die veröffentlichte Sidebar aus, z. B. https://blp.example.com:40009. Leer lassen, wenn er acht Ports über dem Identity-Dienst liegt.",
+      "required": false
+    },
+    "report_url": {
+      "type": "string",
+      "title": "Umgebung 1: Berichtsdienst (optional)",
+      "description": "Laufberichte für blp_reports, z. B. https://blp.example.com:40011. Leer lassen, wenn er zehn Ports über dem Identity-Dienst liegt.",
       "required": false
     },
     "credential_file": {
@@ -121,6 +129,12 @@
       "type": "string",
       "title": "Umgebung 2: Client-Dienst (optional)",
       "description": "Leer lassen, wenn er acht Ports über dem Identity-Dienst liegt.",
+      "required": false
+    },
+    "report_url2": {
+      "type": "string",
+      "title": "Umgebung 2: Berichtsdienst (optional)",
+      "description": "Leer lassen, wenn er zehn Ports über dem Identity-Dienst liegt.",
       "required": false
     },
     "credential_file2": {
@@ -175,6 +189,8 @@
     { "name": "blp_tabs", "description": "Sidebar-Tabs" },
     { "name": "blp_tab", "description": "Sidebar-Tab mit allen Kacheln" },
     { "name": "blp_fields", "description": "Feldverwaltung: Parameter, Variablen, Datenfelder" },
+    { "name": "blp_reports", "description": "Laufberichte: Läufe je Zeitraum, auffällige Läufe, Einzelbericht mit Schritten und Meldungen" },
+    { "name": "blp_search", "description": "Text im ganzen Projekt suchen (Full Export, nur im Speicher), mit Pfaden für blp_change" },
     { "name": "blp_roles", "description": "Rollen und Situationen mit Tabs und Kacheln" },
     { "name": "blp_selection", "description": "Auswahlbaum des Desktop-Clients" },
     { "name": "blp_dataqueries", "description": "Datenabfragen ohne Verbindungsdaten" },

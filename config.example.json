@@ -19,16 +19,18 @@
       "authUrl": "https://HIER_BLP_SERVER:40001",
       "projectUrl": "https://HIER_BLP_SERVER:40002",
       "clientUrl": "https://HIER_BLP_SERVER:40009",
+      "reportUrl": "",
       "projectId": "HIER_PROJEKT_ID",
       "credentialFile": "blp-credential-test.xml",
       "allowChanges": true,
-      "_hinweis": "authUrl = Identity-Dienst (Login), projectUrl = Projektdienst (Designer-API), clientUrl = Client-Dienst (was die Sidebar ausliefert). Die Ports haengen von eurer Installation ab. projectId = 24-stellige ID des Designer-Projekts (steht im Designer in der Adresszeile bzw. unter <projectUrl>/api/v1/project). credentialFile legt Set-BlpCredential.ps1 an. allowChanges = aendernde Werkzeuge frei."
+      "_hinweis": "authUrl = Identity-Dienst (Login), projectUrl = Projektdienst (Designer-API), clientUrl = Client-Dienst (was die Sidebar ausliefert), reportUrl = Berichtsdienst fuer blp_reports (optional, leer = Port zehn ueber authUrl, z. B. :40011). Die Ports haengen von eurer Installation ab. projectId = 24-stellige ID des Designer-Projekts (steht im Designer in der Adresszeile bzw. unter <projectUrl>/api/v1/project). credentialFile legt Set-BlpCredential.ps1 an. allowChanges = aendernde Werkzeuge frei."
     },
     "produktiv": {
       "label": "Produktiv",
       "authUrl": "https://HIER_BLP_SERVER:30001",
       "projectUrl": "https://HIER_BLP_SERVER:30002",
       "clientUrl": "https://HIER_BLP_SERVER:30009",
+      "reportUrl": "",
       "projectId": "HIER_PROJEKT_ID",
       "credentialFile": "blp-credential.xml",
       "allowChanges": false,

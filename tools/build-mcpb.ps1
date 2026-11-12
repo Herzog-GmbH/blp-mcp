@@ -62,6 +62,7 @@ $inhalt = [ordered]@{
   "blp-mcp-bilder.ps1"    = "blp-mcp-bilder.ps1"
   "blp-mcp-bauen.ps1"     = "blp-mcp-bauen.ps1"
   "blp-mcp-module.ps1"    = "blp-mcp-module.ps1"
+  "blp-mcp-berichte.ps1"  = "blp-mcp-berichte.ps1"
   "Set-BlpCredential.ps1" = "Set-BlpCredential.ps1"
   "config.example.json"   = "config.example.json"
   "LICENSE"               = "LICENSE"

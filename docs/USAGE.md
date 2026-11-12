@@ -9,6 +9,9 @@
 - „Welche Kacheln hat das Geschäftsobjekt Lieferant, und mit welcher Bedingung erscheinen sie?“
 - „Wann wurde zuletzt veröffentlicht?“
 - „Wo wird das Bild rechnung_32.png benutzt?“
+- „Wo im ganzen Projekt steht noch der Server srv-alt?“ (`blp_search`)
+- „Liefen seit 6 Uhr alle Prozesse sauber? Zeig mir den Lauf mit Warnung.“ (`blp_reports`)
+- „Wurde im Bericht <transaction_id> irgendwo :32108 angesprochen?“ (`blp_reports` mit `bericht` und `suche`)
 
 **Ändern** (die KI zeigt jeweils erst die Vorschau)
 
@@ -48,9 +51,17 @@
 | Dokument im Auswahlbaum ein/aus | `client/selection` | `{pfad: "selections/[name=Einkauf]/childs/[name=Gutschrift]/include", wert: false}` |
 | Bereich alphabetisch sortieren | `client/selection` | `{pfad: "selections/[name=Einkauf]/childs", aktion: "sortieren"}` |
 | Dokument aus dem Auswahlbaum entfernen | `client/selection` | `{pfad: "selections/[name=Einkauf]/childs/[name=Gutschrift]", aktion: "entfernen"}` |
+| Parameter der Feldverwaltung (geht bei jedem Lauf mit) | `fieldmanager` (ohne `objekt`) | `{pfad: "parameters/[name=ECMServer]/value", wert: "srv-neu"}` |
 | Kachelbild auf ein vorhandenes Bild umstellen | `client/sidebar/tab/action` / Tab | `{pfad: "tiles/[name=Rechnungen]/layout/images/image_medium/item_id", wert: "<Bild-ID>"}` |
 
-Tipp: Den genauen Pfad findet die KI mit `blp_tab … roh: true`, `blp_object … roh: true`, `blp_process … knoten: <ID-Anfang>` und `blp_read_path`.
+Tipp: Den genauen Pfad findet die KI mit `blp_tab … roh: true`, `blp_object … roh: true`, `blp_process … knoten: <ID-Anfang>` und `blp_read_path`. Weiß man nur den Wert, nicht die Stelle: `blp_search` liefert für Prozesse, Objekte, Feldverwaltung, Rollen, Suchprofile und Module `baustein`, `objekt` und `pfad` passend für `blp_change`.
+
+## Umstellung prüfen (Beispiel: Server abgelöst)
+
+1. `blp_search text: "srv-alt"` – alle Stellen im Projekt. Was mit `baustein` kommt, per `blp_change` umstellen; Richtlinien, Service-Pools, Zugangsdaten und Bereitstellungsprofile im Designer.
+2. Veröffentlichen (Mensch, Designer).
+3. `blp_reports seit: "<Zeitpunkt der Umstellung>"` – laufen die Prozesse? Auffällige Läufe mit `bericht: <transaction_id>` ansehen, mit `suche: "srv-alt"` prüfen, ob der alte Server noch irgendwo auftaucht (auch `inParametern` = mitgegebene Feldverwaltungs-Parameter).
+
 
 ## Neuanlage
 

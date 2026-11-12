@@ -211,7 +211,7 @@ Werkzeug "blp_image_upload" ("Laedt PNG-Bilder ins Bildpaket (zweistufig) und ha
     if ($neu.Count) {
       $paket = BildPaketLesen
       New-Item -ItemType Directory -Force $SICHERUNG | Out-Null
-      $sich = Join-Path $SICHERUNG ("image_package-{0}-{1}-vorher.json" -f $paket._id, (Get-Date).ToString("yyyyMMdd-HHmmss"))
+      $sich = Join-Path $SICHERUNG ("image_package-{0}-{1}-vorher.json" -f $paket._id, (Get-Date).ToString("yyyyMMdd-HHmmss-fff"))
       [IO.File]::WriteAllText($sich, (JStr $paket), [Text.UTF8Encoding]::new($false))
       $basis = "$PROJEKT/api/v1/image/package/$($paket._id)"
       $wk = JObj (Blp-Send "POST" "$basis/checkout" (JStr @{ _read_token = $paket._read_token }))
@@ -304,7 +304,7 @@ Werkzeug "blp_image_remove" ("Nimmt Bilder aus einem Container des Bildpakets (z
     param($plan)
     $paket = BildPaketLesen
     New-Item -ItemType Directory -Force $SICHERUNG | Out-Null
-    $sich = Join-Path $SICHERUNG ("image_package-{0}-{1}-vorher.json" -f $paket._id, (Get-Date).ToString("yyyyMMdd-HHmmss"))
+    $sich = Join-Path $SICHERUNG ("image_package-{0}-{1}-vorher.json" -f $paket._id, (Get-Date).ToString("yyyyMMdd-HHmmss-fff"))
     [IO.File]::WriteAllText($sich, (JStr $paket), [Text.UTF8Encoding]::new($false))
     $basis = "$PROJEKT/api/v1/image/package/$($paket._id)"
     $wk = JObj (Blp-Send "POST" "$basis/checkout" (JStr @{ _read_token = $paket._read_token }))

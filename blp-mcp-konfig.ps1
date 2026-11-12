@@ -57,8 +57,18 @@ function Lade-Konfig([string] $Pfad, [string] $Umgebung, [switch] $OhneProjekt) 
     foreach ($p in $bilder.containers.PSObject.Properties) { if ($p.Name -notlike "_*" -and "$($p.Value)") { $container[$p.Name] = "$($p.Value)" } }
   }
 
+  # Berichtsdienst (Laufberichte, blp_reports) optional: fehlt reportUrl, gilt der Port zehn ueber dem Identity-Dienst
+  # (...01 -> ...11, so bei BLP 6 ueblich). blp_reports nennt die Adresse, wenn sie nicht antwortet.
+  $bericht = "$($u.reportUrl)".TrimEnd('/'); $berichtAbgeleitet = $false
+  if (-not $bericht -or $bericht -like "*HIER_*") {
+    $bericht = ""; $au = $null
+    if ([Uri]::TryCreate("$($u.authUrl)", [UriKind]::Absolute, [ref] $au) -and -not $au.IsDefaultPort) { $bericht = "{0}://{1}:{2}" -f $au.Scheme, $au.Host, ($au.Port + 10); $berichtAbgeleitet = $true }
+  }
+
   [pscustomobject]@{
     datei          = $datei
+    reportUrl      = $bericht
+    reportUrlAbgeleitet = $berichtAbgeleitet
     name           = $name
     label          = $(if ($u.label) { "$($u.label)" } else { $name })
     authUrl        = "$($u.authUrl)".TrimEnd('/')

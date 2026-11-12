@@ -6,7 +6,7 @@
 
 [![PowerShell 7](https://img.shields.io/badge/PowerShell-7.5%2B-5391fe)](#kompatibilität)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![24 Werkzeuge](https://img.shields.io/badge/Werkzeuge-24-2ea44f)](#werkzeuge)
+[![30 Werkzeuge](https://img.shields.io/badge/Werkzeuge-30-2ea44f)](#werkzeuge)
 [![Zweistufige Freigabe](https://img.shields.io/badge/%C3%84ndern-Vorschau%20%2B%20Freigabe-e36209)](#so-läuft-eine-änderung)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#kompatibilität)
@@ -27,6 +27,8 @@ Ein [MCP](https://modelcontextprotocol.io/)-Server für den **BLP (ACTIWARE Busi
 - „Sortier den Bereich Einkauf im Auswahlbaum alphabetisch.“
 - „Lade diese drei Symbole hoch und häng sie an die neue Kachel.“
 - „Bau einen Prozess: Formular mit Name und Abteilung, dann eine Entscheidung, dann ELOas-Regel X aufrufen.“
+- „Wo im Projekt steht noch der alte Server `srv-alt`?“
+- „Liefen seit 6 Uhr alle Prozesse sauber? Was war mit dem Lauf mit Warnung?“
 
 Die KI liest die Bausteine über dieselbe REST-API wie der Web-Designer, zeigt euch vor jeder Änderung bisher/neu und ändert erst nach eurer Zustimmung. **Veröffentlichen macht ihr selbst im Designer** – vorher sieht keine Sidebar etwas.
 
@@ -37,6 +39,7 @@ Die KI liest die Bausteine über dieselbe REST-API wie der Web-Designer, zeigt e
 - **Neu anlegen:** Prozess als Kopie eines vorhandenen, leerer Sidebar-Tab, Kachel als Kopie einer Vorlage-Kachel, Geschäftsobjekt (leer mit Feldern oder als Kopie).
 - **Prozesse bauen:** Prozess als [Bauplan](#bauplan) exportieren (Knoten mit Bausteinnamen, Parameter lesbar entpackt, Verbindungen), ändern oder neu schreiben und daraus einen neuen Prozess, eine Kopie oder den Ersatz des vorhandenen bauen – mit Prüfung von Start, Ausgängen und Erreichbarkeit.
 - **Bilder:** PNG-Symbole ins Bildpaket laden, an Kacheln und Tabs hängen, wieder entfernen.
+- **Prüfen und suchen:** Laufberichte der Prozesse (Übersicht je Zeitraum, Einzelbericht mit Schritten und Meldungen) und eine Suche über das ganze Projekt (Full Export), z. B. nach einem alten Servernamen, mit Pfaden, die direkt in `blp_change` passen.
 - **Zweistufig:** Der erste Aufruf liefert Prüfung, Vorschau und einen Freigabe-Code. Erst der zweite Aufruf mit denselben Argumenten führt aus – fünf Minuten gültig, einmal, nur wenn sich der Baustein seitdem nicht geändert hat.
 - **Abgesichert:** Sicherung vor jeder Änderung, checkout/commit wie im Designer, `undo` bei Fehlern, Kontrolle nach dem Speichern, Protokoll, Maskierung von Passwörtern und Tokens. Produktiv ist standardmäßig nur lesbar.
 - **Test und Produktiv in einem Server:** mit `-Umgebung test,produktiv` hat jedes Werkzeug den Parameter `umgebung`, jede Umgebung mit eigener Anmeldung und eigenem Schalter fürs Ändern.
@@ -105,7 +108,7 @@ Das Paket schreibt die Einstellungen bei jedem Start nach `%LOCALAPPDATA%\blp-mc
 
 | Schlüssel | Bedeutung |
 |---|---|
-| `environments.<name>` | je Umgebung `authUrl` (Identity), `projectUrl` (Projektdienst), `clientUrl` (Client-Dienst), `projectId`, `credentialFile`, `allowChanges`, optional `label` und `skipCertificateCheck` |
+| `environments.<name>` | je Umgebung `authUrl` (Identity), `projectUrl` (Projektdienst), `clientUrl` (Client-Dienst), `projectId`, `credentialFile`, `allowChanges`, optional `label`, `skipCertificateCheck` und `reportUrl` (Berichtsdienst für `blp_reports`; ohne Angabe der Port zehn über dem Identity-Dienst, `…01` → `…11`) |
 | `defaultEnvironment` | Umgebung ohne Startschalter; andere mit `-Umgebung <name>`, mehrere mit `-Umgebung test,produktiv` |
 | `allowChanges` | ändernde Werkzeuge frei (Standard in der Vorlage: Test ja, Produktiv nein). Überschreiben nur bewusst mit `-AendernErlauben`, das geht nur mit einer Umgebung |
 | `skipCertificateCheck` | nur für selbstsignierte Zertifikate, die der Rechner nicht kennt |
@@ -127,7 +130,7 @@ Zugangsdaten stehen **nie** in der Konfiguration, sondern in der DPAPI-Datei aus
 | `blp_objects` / `blp_object` | Geschäftsobjekte; Detail mit Feldern, Füllregeln, Suche und Kacheln |
 | `blp_tabs` / `blp_tab` | Sidebar-Tabs; Detail mit allen Kacheln (Aktion, Prozess, Farbe, Sichtbarkeit, Bedingung) |
 | `blp_roles` | Rollen und Situationen mit Tabs an/aus; mit `rolle` die Kacheln je Tab |
-| `blp_fields` | Feldverwaltung: Parameter, Variablen, Datenfelder |
+| `blp_fields` | Feldverwaltung: Parameter (gehen bei jedem Prozesslauf mit), Variablen, Datenfelder; ändern mit `blp_change` und `baustein: fieldmanager` |
 | `blp_dataqueries` | Datenabfragen (Name, Modul, Bedingungs- und Ergebnisfelder, ohne Verbindungsdaten) |
 | `blp_dataquery` | Datenabfragen mit Inhalt: SQL-Text, Feldzuordnung, Schalter, Quelle und Anmeldeprofil (SQL/OleDb), Teilabfragen und Spalten (GroupQueries), mit Pfaden zum Ändern; ohne `abfrage` die Übersicht je Add-in; Verbindungszeichenfolgen ausgeblendet |
 | `blp_selection` | Auswahlbaum des Clients (`client/selection`): Bereich › Dokument › Prozess › Felder, je Bereich ob sortiert |
@@ -138,6 +141,8 @@ Zugangsdaten stehen **nie** in der Konfiguration, sondern in der DPAPI-Datei aus
 | `blp_process_export` | Prozess als [Bauplan](#bauplan) (JSON); große Baupläne als Datei. Ohne `prozess`: Liste der Bausteine (Prozessoren aller Module) mit ihren Ausgängen |
 | `blp_modules` | Module mit Softwareversion und ihrer Modulkonfiguration im Projekt (Version, letzte Änderung, Parameter-Schlüssel und Größe, Sperre) |
 | `blp_module` | Modulkonfiguration eines Moduls, eingebettetes JSON ausgepackt. Kurzansicht für Validation (Dokumenttypen, Blöcke, Felder, Regeln) und AI.Foundation (Prompts, Modellprofile, Anbieter), sonst Gliederung; `voll` = alles, große Konfigurationen als Datei (maskiert) |
+| `blp_reports` | Laufberichte (Berichtsdienst): Läufe seit/bis je Prozess mit Status, Kind-Läufe, die nicht `Done` sind, auffällige Läufe mit `transaction_id`; mit `bericht` ein Einzelbericht (Benutzer, mitgegebene Parameter, Schritte mit Baustein, Status und Ausgang, Warn- und Fehlermeldungen, Kind-Läufe), mit `suche` alle Meldungen mit einem Text. Siehe [Laufberichte](#laufberichte) |
+| `blp_search` | Text im ganzen Projekt suchen (Full Export: Prozesse, Objekte, Feldverwaltung, Rollen, Module, Datenabfragen, Zugangsdaten-Einträge, Richtlinien mit Service-Pools …), auch in eingebettetem JSON; je Treffer Bereich, Objekt, Pfad und Ausschnitt. Siehe [Suche im Projekt](#suche-im-projekt) |
 
 Namen findet der Server tolerant: ID, exakter Name oder Anzeigetext, dann „Name (Zusatz)“, dann Namensteil. Bei mehreren Treffern kommt die Liste zurück.
 
@@ -145,7 +150,7 @@ Namen findet der Server tolerant: ID, exakter Name oder Anzeigetext, dann „Nam
 
 | Werkzeug | Zweck |
 |---|---|
-| `blp_change` | Baustein gezielt ändern: Liste von `{pfad, wert, aktion}`. Freigegeben für `processengine`, `objectmanager`, `client/sidebar/tab/action`, `smartsearch`, `role`, `client/selection`, `module` (siehe [Modulkonfiguration](#modulkonfiguration)), `dataquery` (siehe [Datenabfragen](#datenabfragen)) |
+| `blp_change` | Baustein gezielt ändern: Liste von `{pfad, wert, aktion}`. Freigegeben für `processengine`, `objectmanager`, `client/sidebar/tab/action`, `smartsearch`, `role`, `client/selection`, `fieldmanager` (Feldverwaltung, ohne `objekt`), `module` (siehe [Modulkonfiguration](#modulkonfiguration)), `dataquery` (siehe [Datenabfragen](#datenabfragen)) |
 | `blp_module_restore` | Sicherung einer Modulkonfiguration oder der Datenabfragen eines Add-ins zurückspielen (der Stand davor wird wieder gesichert) |
 | `blp_create_process` | neuer Prozess als Kopie eines vorhandenen, optional mit Pfad-Änderungen an der Kopie |
 | `blp_create_tab` | neuer, leerer Sidebar-Tab |
@@ -183,6 +188,36 @@ Die SQL-, OleDb- und Gruppenabfragen (und die Abfragen der Add-ins IX Query, ODa
 ```
 
 Es gilt dasselbe wie bei der Modulkonfiguration: kein checkout und kein undo, Sicherung vorher, zurück mit `blp_module_restore`. Werte mit `***` werden abgelehnt. Eine geänderte SQL-Abfrage wirkt in allen Gruppenabfragen und Prozessen, die sie benutzen (`blp_dataquery` nennt die Gruppenabfragen). Zugangsdaten hängen über das Anmeldeprofil am Credential Store und werden hier weder gezeigt noch geändert.
+
+### Laufberichte
+
+`blp_reports` liest den Berichtsdienst des BLP: zu jedem Prozesslauf ein Bericht mit Schritten und Meldungen, 28 Tage aufbewahrt. Typisch nach einer Umstellung: „Liefen seit 05:40 alle Läufe sauber?“
+
+```text
+blp_reports  seit: "05:40"                     → Anzahl je Prozess, Status, auffällige Läufe mit transaction_id
+blp_reports  seit: "4h", prozess: "Rechnung", alle: true
+blp_reports  bericht: "<transaction_id>", suche: "srv-alt"
+```
+
+- `seit`/`bis`: `05:40` (heute), `2026-11-12 05:40`, `4h`, `30m`, `2d`; ohne Angabe die letzten 24 Stunden. Zeiten in der Antwort in Ortszeit, der Dienst selbst liefert UTC.
+- Kind-Läufe mit `Warning` werden nur gezählt (manche Container-Prozesse haben sie immer), `kinderWarnungen: true` zeigt sie einzeln.
+- Der Einzelbericht nennt bei `Warning` ohne Warnmeldung die Schritte, die ohne Ausgang endeten – das ist meist der Grund.
+- Der Bericht enthält die Zugangsdaten der Message-Queue; sie erscheinen wie alle Geheimnisse als `***`. Berichte bleiben 28 Tage.
+- Die Seitenzählung des Dienstes stimmt nicht verlässlich (`pages`, `has_next_page`); der Server sucht das Ende selbst und springt per Halbierung zum Zeitraum.
+
+### Suche im Projekt
+
+`blp_search` holt den Full Export des Projekts (wie *Dashboard → Export project → full export* im Designer) und durchsucht ihn ganz, auch eingebettetes JSON in Prozessparametern. So findet ihr Reste, die in keinem einzelnen Baustein auffallen, etwa einen alten Server in einem Zugangsdaten-Eintrag oder einem Service-Pool der Richtlinie.
+
+```text
+blp_search  text: "srv-alt"
+blp_search  text: "ECMServer", bereich: "FieldManager,Processes"
+```
+
+- Treffer in `Processes`, `BusinessObjects`, `FieldManager`, `RolesAndSituations`, `SmartSearchProfiles` und `ModuleConfigs` kommen mit `baustein`, `objekt` und `pfad`, die direkt in `blp_read_path`/`blp_change` passen.
+- Andere Bereiche (Richtlinien, Service-Pools, Zugangsdaten, Bereitstellungsprofile, Datenabfrage-Quellen) zeigt die Suche nur; geändert werden sie im Designer.
+- Der Export ohne Dateikennwort enthält Zugangsdaten im Klartext. Er bleibt nur im Speicher (drei Minuten für weitere Suchen, `neu: true` lädt neu), wird nie gespeichert, und Werte unter Schlüsseln mit pass/secret/token/credential/connectionstring erscheinen als `***`.
+- Das Bildpaket (base64, mehrere MB) wird nur mit `bereich: "ImageRepositryPackages"` durchsucht.
 
 ## So läuft eine Änderung
 
@@ -256,6 +291,7 @@ Format, Beispiele und Fallen: [`docs/USAGE.md`](docs/USAGE.md#bauplan).
 - **Maskierung:** Schlüssel mit pass/pwd/secret/token/credential/apikey (auch in eingebetteten JSON-Texten) und `Password=…` in Verbindungszeichenfolgen werden in jeder Antwort zu `***`.
 - **Zugangsdaten:** DPAPI-verschlüsselt, nur für das eigene Windows-Konto lesbar. Nie in der Konfiguration, nie im Chat.
 - **Nur die eigenen Dienste:** `blp_get` nimmt nur Pfade, keine Adressen.
+- **Full Export nur im Speicher:** `blp_search` schreibt den Export nie auf die Platte und zeigt Geheimnisse als `***`.
 - Sicherheitslücken bitte **nicht** als öffentliches Issue melden, sondern wie in [`SECURITY.md`](SECURITY.md) beschrieben.
 
 ## Dokumentation
@@ -271,7 +307,7 @@ Format, Beispiele und Fallen: [`docs/USAGE.md`](docs/USAGE.md#bauplan).
 
 ## Entwickeln
 
-Der Server besteht aus `blp-mcp.ps1` (Protokoll, Anmeldung, Lesewerkzeuge) und den per Dot-Sourcing eingebundenen Dateien `blp-mcp-konfig.ps1`, `blp-mcp-aendern.ps1` (Pfadsprache, Ändern, Neuanlage), `blp-mcp-bilder.ps1` (Bildpaket), `blp-mcp-bauen.ps1` (Bauplan, Geschäftsobjekt anlegen) und `blp-mcp-module.ps1` (Modulkonfiguration, Datenabfragen). Testlauf ohne MCP-Client:
+Der Server besteht aus `blp-mcp.ps1` (Protokoll, Anmeldung, Lesewerkzeuge) und den per Dot-Sourcing eingebundenen Dateien `blp-mcp-konfig.ps1`, `blp-mcp-aendern.ps1` (Pfadsprache, Ändern, Neuanlage), `blp-mcp-bilder.ps1` (Bildpaket), `blp-mcp-bauen.ps1` (Bauplan, Geschäftsobjekt anlegen), `blp-mcp-module.ps1` (Modulkonfiguration, Datenabfragen) und `blp-mcp-berichte.ps1` (Laufberichte, Suche im Projekt). Testlauf ohne MCP-Client:
 
 ```powershell
 python -I test-blp-mcp.py beispiel-aufrufe.json

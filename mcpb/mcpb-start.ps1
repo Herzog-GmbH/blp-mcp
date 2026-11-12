@@ -39,8 +39,8 @@ function Schluessel([string] $name) {
   if ($s) { $s } else { "umgebung" }
 }
 
-# Projektdienst und Client-Dienst liegen bei vielen Installationen auf demselben Server, einen bzw.
-# acht Ports ueber dem Identity-Dienst (...01, ...02, ...09). Ohne Port in der Adresse kein Vorschlag.
+# Projektdienst, Client-Dienst und Berichtsdienst liegen bei vielen Installationen auf demselben Server, einen,
+# acht bzw. zehn Ports ueber dem Identity-Dienst (...01, ...02, ...09, ...11). Ohne Port in der Adresse kein Vorschlag.
 function Nachbar([string] $auth, [int] $plus) {
   $u = $null
   if (-not [Uri]::TryCreate($auth, [UriKind]::Absolute, [ref] $u) -or $u.IsDefaultPort) { return "" }
@@ -52,9 +52,10 @@ function Umgebung([string] $n, [string] $standardName) {
   $auth = "$(Wert "BLP_MCPB_AUTH_URL$n")".TrimEnd('/')
   $proj = Wert "BLP_MCPB_PROJECT_URL$n"; if (-not $proj) { $proj = Nachbar $auth 1 }
   $cli = Wert "BLP_MCPB_CLIENT_URL$n"; if (-not $cli) { $cli = Nachbar $auth 8 }
+  $rep = Wert "BLP_MCPB_REPORT_URL$n"; if (-not $rep) { $rep = Nachbar $auth 10 }
   $key = Schluessel $name
   $cred = Wert "BLP_MCPB_CREDENTIAL_FILE$n"; if (-not $cred) { $cred = "%LOCALAPPDATA%\blp-mcp\blp-credential-$key.xml" }
-  [pscustomobject]@{ key = $key; wert = [ordered]@{ label = $name; authUrl = $auth; projectUrl = "$proj"; clientUrl = "$cli"
+  [pscustomobject]@{ key = $key; wert = [ordered]@{ label = $name; authUrl = $auth; projectUrl = "$proj"; clientUrl = "$cli"; reportUrl = "$rep"
     projectId = "$(Wert "BLP_MCPB_PROJECT_ID$n")"; credentialFile = $cred; allowChanges = (Schalter "BLP_MCPB_AENDERN$n") } }
 }
 

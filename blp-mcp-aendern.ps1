@@ -33,6 +33,10 @@ $BAUSTEINE = [ordered]@{
   # Einzelbaustein ohne ID: GET/POST client/selection, checkout/commit/undo darunter
   # (erprobt: anhaengen, include, sortieren, ganze childs-Liste zurueckschreiben).
   "client/selection"          = @{ erprobt = $true;  text = "Auswahlbaum (Client)"; einzel = $true }
+  # Feldverwaltung (Parameter wie ECMServer, Variablen, Datenfelder): Einzelbaustein, gleicher Weg wie der Auswahlbaum
+  # (checkout/commit/undo unter fieldmanager). Erprobt 12.11.2026 auf Test (12.0 -> 13.0) und Produktiv (23.0 -> 24.0),
+  # Pfad parameters/[name=ECMServer]/value. Die Parameter gelten fuer jeden Prozesslauf (configuration im Bericht).
+  "fieldmanager"              = @{ erprobt = $true;  text = "Feldverwaltung"; einzel = $true }
   # Modulkonfiguration (module/<Modul-ID>, z. B. Validation, AI.Foundation): kein checkout/commit/undo (405).
   # Speichern = POST mit dem Lesetoken aus dem GET, ist sofort festgeschrieben (neue Hauptversion).
   # Ein veraltetes Token lehnt der Dienst ab (PRJ050007) und laesst das Modul dabei gesperrt (_locked),
@@ -244,7 +248,7 @@ function PruefeMasken($ist, $neu) {
 
 function BausteinFinden([string] $baustein, [string] $wer) {
   if ($BAUSTEINE.Contains($baustein) -and $BAUSTEINE[$baustein].einzel) { return "" }   # Einzelbaustein, objekt entfaellt
-  if (-not $wer) { throw "objekt fehlt (ID oder Name; nur beim Auswahlbaum client/selection entbehrlich)." }
+  if (-not $wer) { throw "objekt fehlt (ID oder Name; nur beim Auswahlbaum client/selection und bei der Feldverwaltung fieldmanager entbehrlich)." }
   switch ($baustein) {
     "processengine" { $e = Finde (Prozessliste) $wer "Prozess"; return $e.id }
     "objectmanager" { return (Finde ((Lies "objectmanager").objects) $wer "Objekt")._id }
@@ -292,9 +296,9 @@ function ZweiSchritte([string] $name, $a, [scriptblock] $pruefen, [scriptblock] 
 # ---------- Werkzeuge ----------
 
 Werkzeug "blp_read_path" ("Liest den Wert an einem Pfad eines Bausteins (gleiche Pfadsprache wie blp_change), z. B. 'nodes/[id^=23d05bc3]/parameters/Module.Elo.ActionNode.EloAs/#/AsDefinitions/0' " +
-  "oder beim Auswahlbaum (client/selection, ohne objekt) 'selections/[name=Einkauf]/childs/[name=Rechnung]'. Zum Vorbereiten von Aenderungen.") @{
+  "oder beim Auswahlbaum (client/selection, ohne objekt) 'selections/[name=Einkauf]/childs/[name=Rechnung]', bei der Feldverwaltung (fieldmanager, ohne objekt) 'parameters/[name=ECMServer]/value'. Zum Vorbereiten von Aenderungen.") @{
   baustein = @{ type = "string"; enum = @($BAUSTEINE.Keys) }
-  objekt = @{ type = "string"; description = "ID oder Name des Bausteins (Prozess, Objekt, Tab, Suchprofil, Rolle, Modul, Datenabfrage-Add-in wie SQL); entfaellt bei client/selection" }
+  objekt = @{ type = "string"; description = "ID oder Name des Bausteins (Prozess, Objekt, Tab, Suchprofil, Rolle, Modul, Datenabfrage-Add-in wie SQL); entfaellt bei client/selection und fieldmanager" }
   pfad = @{ type = "string" } } @("baustein", "pfad") {
   param($a)
   $id = BausteinFinden $a.baustein $a.objekt
@@ -342,7 +346,9 @@ function AenderungPlan([string] $baustein, [string] $objekt, $aenderungen, [stri
 function AenderungAusfuehren([string] $b, $plan, $aenderungen) {
   $id = $plan.id; $adr = BausteinPfad $b $id
   New-Item -ItemType Directory -Force $SICHERUNG | Out-Null
-  $sich = Join-Path $SICHERUNG ("{0}-{1}-{2}-vorher.json" -f ($b -replace '/', '_'), $(if ($id) { $id -replace '/', '_' } else { "einzel" }), (Get-Date).ToString("yyyyMMdd-HHmmss"))
+  # Version und Millisekunden im Namen: zwei Aenderungen in derselben Sekunde ueberschrieben sonst die erste Sicherung (Befund 12.11.2026)
+  $vers = "$((JObj $plan.roh)._version)" -replace '[^0-9.]', ''
+  $sich = Join-Path $SICHERUNG ("{0}-{1}-v{2}-{3}-vorher.json" -f ($b -replace '/', '_'), $(if ($id) { $id -replace '/', '_' } else { "einzel" }), $vers, (Get-Date).ToString("yyyyMMdd-HHmmss-fff"))
   [IO.File]::WriteAllText($sich, $plan.roh, [Text.UTF8Encoding]::new($false))
   $ist = JObj $plan.roh
   if ($BAUSTEINE[$b].direkt) {
@@ -397,6 +403,7 @@ function AenderungAusfuehren([string] $b, $plan, $aenderungen) {
 
 Werkzeug "blp_change" ("Aendert einen BLP-Baustein gezielt ueber Pfade (zweistufig: Vorschau mit bisher/neu, dann mit freigabe ausfuehren). " +
   "Bausteine: processengine, objectmanager, client/sidebar/tab/action, smartsearch, role, client/selection (Auswahlbaum, ohne objekt), " +
+  "fieldmanager (Feldverwaltung, ohne objekt; Parameter wie ECMServer gelten fuer jeden Prozesslauf, Pfad z. B. parameters/[name=ECMServer]/value), " +
   "module (Modulkonfiguration, objekt = Modulname wie Validation oder AI.Foundation; Pfad z. B. parameters/Module.Document.Processing.Config/#/validatorConfig/...; " +
   "ohne checkout/undo sofort festgeschrieben, Sicherung vorher, zurueck mit blp_module_restore), " +
   "dataquery (Datenabfragen eines Add-ins, objekt = SQL, GroupQueries, OleDb ...; Pfad wie ihn blp_dataquery nennt, z. B. " +
@@ -406,7 +413,7 @@ Werkzeug "blp_change" ("Aendert einen BLP-Baustein gezielt ueber Pfade (zweistuf
   "Ablauf: Sicherung, checkout, Aenderung, Pruefung (keine null in Listen, Prozessparameter nur Text), speichern, commit, nachlesen; bei Fehler undo. " +
   "Veroeffentlichen macht ein Mensch im Designer. Nur in Umgebungen mit allowChanges.") @{
   baustein = @{ type = "string"; enum = @($BAUSTEINE.Keys) }
-  objekt = @{ type = "string"; description = "ID oder Name (bei module: Modulname oder Modul-ID; bei dataquery: Add-in wie SQL oder GroupQueries); entfaellt bei client/selection" }
+  objekt = @{ type = "string"; description = "ID oder Name (bei module: Modulname oder Modul-ID; bei dataquery: Add-in wie SQL oder GroupQueries); entfaellt bei client/selection und fieldmanager" }
   aenderungen = @{ type = "array"; description = "Liste von {pfad, wert, aktion}"; items = @{ type = "object"; properties = @{
       pfad = @{ type = "string" }; wert = @{ description = "Neuer Wert (beliebiges JSON); entfaellt bei entfernen; bei sortieren das Feld (Standard display_text)" }
       aktion = @{ type = "string"; enum = @("setzen", "anhaengen", "entfernen", "sortieren") } }; required = @("pfad") } }

@@ -10,6 +10,7 @@ Die REST-API des BLP-Designers ist nicht offiziell dokumentiert. Alles hier stam
 | Projektdienst | alle Designer-Bausteine | `GET /api/v1/project` (Projekte mit `_id`), `…/api/v1/project/<Projekt-ID>/<Baustein>` |
 | Client-Dienst | was die Sidebar ausliefert (veröffentlichter Stand) | `GET /api/v1/project` mit `last_update`, Kachelfarben `GET /api/v1/theme/sidebar/tiles/colors` |
 | Prozessdienst | Prozesse ausführen | `…/api/v1/process/<Projekt>/<Prozess>/start` (vom MCP nicht benutzt) |
+| Berichtsdienst | Laufberichte (bei uns Port …11) | `GET /api/v3/report?query=*&page=N`, `GET /api/v1/report/<transaction_id>`; siehe [Laufberichte](#laufberichte) |
 | Designer | nur die Oberfläche; die Dienstadressen stehen in ihrer `config.js` | |
 
 Jeder Aufruf braucht `Authorization: Bearer <token>` und `X-CLIENT-SYSTEM-ID: IoSidebarWebClient`. Das Token ist opak; bei 401 einfach neu anmelden.
@@ -27,12 +28,24 @@ Jeder Aufruf braucht `Authorization: Bearer <token>` und `X-CLIENT-SYSTEM-ID: Io
 | `client/selection` | Auswahlbaum des Desktop-Clients, **ein** Baustein ohne ID |
 | `role` | Rollen mit `situations[].action_tabs[]` (`tab_id`, `include`, `actions[]`, `override_settings`) |
 | `smartsearch` | Suchprofile (`lists`), einzeln unter `smartsearch/<id>` |
-| `fieldmanager` | Parameter, Variablen, Datenfelder |
+| `fieldmanager` | Parameter, Variablen, Datenfelder; **ein** Baustein ohne ID, checkout/commit/undo darunter wie beim Auswahlbaum. Die Parameter (z. B. Servernamen) gehen bei jedem Prozesslauf als `configuration` mit |
 | `dataquerymanager/load/items` | alle Datenabfragen (nur Name, Add-in, Bedingungs- und Ergebnisfelder) |
 | `dataquerymanager/<Modul-ID>/<Add-in-ID>` | Datenabfragen eines Add-ins mit Inhalt, z. B. SQL (`Module.DataConnect.DataQuery.SQL.Config` → `Sources[].DataQueries[]` mit `DataQueryString`, `FieldMappings`), GroupQueries (`…GroupQueries.Config` → `Queries[]`); `POST` speichert wie bei `module/<Modul-ID>` |
 | `module/<Modul-ID>` | Modulkonfiguration, z. B. Validation (`Module.Document.Processing.Config` → `validatorConfig.documentTypes`), AI.Foundation (`aw_module_config.internal.config_key` → `promptSettings`, `modelProfiles`, `providerConfigs`); siehe Fallen |
 
 Die Prozessor-Liste eines Moduls (also die Namen der Bausteine in einem Prozess) liegt **nicht** unter dem Projekt, sondern am Projektdienst unter `GET /api/v1/module/<Modul-ID>`. Alle Module mit ihren Prozessoren auf einmal: `GET /api/v1/module` → `{modules: [{module_id, name, processors: [{info: {id, name, display_text}, input_ports: [{id}], output_ports: [{id}]}]}]}`. Prozessknoten haben selbst keinen Namen, nur `description` und `processor_id`.
+
+## Laufberichte
+
+- **Liste:** `GET <Berichtsdienst>/api/v3/report?query=*&page=N` → `{reports[], page, pages, has_next_page, item_count, found_items, raw_query}`. 25 Berichte je Seite, **älteste zuerst**. `pages` und `has_next_page` stimmen nicht verlässlich (bei uns `pages` 321 bei 334 belegten Seiten, `has_next_page` auf allen Seiten `false`): Das Ende ist die erste Seite ohne `reports`. `sort`/`order` werden ignoriert, Datumsfilter in `query` beantwortet der Dienst mit HTTP 500. Weil die ältesten Berichte nach 28 Tagen (`retention_date`) wegfallen, rutschen die Seitennummern laufend nach vorn.
+- **Listeneintrag:** `transaction_id`, `start_date` (UTC), `process.name`, `state` (`Done`, `Warning`, …), `execution_time` (ms), `children[]` (Kind-Läufe, z. B. Logikprozesse eines Containers, mit eigenem `state`).
+- **Einzelbericht:** `GET <Berichtsdienst>/api/v1/report/<transaction_id>` → `owner` (Benutzer, Rechner), `configuration` (Parameter der Feldverwaltung zur Laufzeit), `services` (enthält Zugangsdaten der Message-Queue im Klartext!), `steps[]` (`diagram_node_id`, `state`, `exit_port`, `processor_execution_time`, `messages[]` mit `time`, `level` Debug/Message/Warning/Error, `language_code`, `text` mit Platzhaltern `{0}`, `args[]`), `children[]` als volle Berichte, `process.layout.nodes[]` (`id`, `module_id`, `processor_id`).
+- **`Warning` ohne Warnmeldung:** kommt vor, wenn ein Schritt ohne Ausgang endet (`exit_port` leer, z. B. ein Prozessstarter am Ende ohne Nachfolger).
+- Das Token des Projektdienstes (admin) gilt auch am Berichtsdienst.
+
+## Full Export
+
+`GET <Projektdienst>/api/v2/project/<Projekt-ID>/export?password=<Dateikennwort>` liefert das ganze Projekt wie *Dashboard → Export project → full export* (bei uns gut 7 MB). Ohne Kennwort lesbares JSON mit den Bereichen `Information`, `ClientDesigner`, `Processes`, `Triggers`, `FieldManager`, `DeploymentProfiles`, `ModuleConfigs`, `CredentialStore`, `BusinessObjects`, `SmartSearchProfiles`, `DataConnect`, `DesktopExtensions`, `ImageRepositryPackages` (sic, Bilder base64), `Repositories`, `RolesAndSituations`, `Translations`, `ColorSchemes`, `Layouts`, `ClientThemes`, `SidebarThemes`, `Policies` (mit `service_pools[]` der Sidebar-Richtlinie), `ObjectStorage`, `AiAssistant`, `OutputManager`, `ServicePools`. Die Elemente entsprechen den einzelnen Bausteinen, Pfade darin passen also zu `blp_change`. **Zugangsdaten stehen ohne Kennwort teils im Klartext** – nicht speichern, nicht weitergeben. `blp_search` hält ihn nur im Speicher.
 
 ## Prozessdefinition
 

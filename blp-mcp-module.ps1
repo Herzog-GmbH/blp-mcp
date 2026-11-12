@@ -174,7 +174,7 @@ Werkzeug "blp_module_restore" ("Spielt eine Sicherung einer Modulkonfiguration o
     param($plan)
     $ist = JObj $plan.roh
     New-Item -ItemType Directory -Force $SICHERUNG | Out-Null
-    $sich = Join-Path $SICHERUNG ("{0}-{1}-vorher.json" -f $plan.m.datei, (Get-Date).ToString("yyyyMMdd-HHmmss"))
+    $sich = Join-Path $SICHERUNG ("{0}-{1}-vorher.json" -f $plan.m.datei, (Get-Date).ToString("yyyyMMdd-HHmmss-fff"))
     [IO.File]::WriteAllText($sich, $plan.roh, [Text.UTF8Encoding]::new($false))
     $ist.parameters = $plan.s.parameters
     $fehler = @(L (Pruefe $ist "module")); if ($fehler.Count) { throw ("Pruefung: " + ($fehler -join "; ")) }

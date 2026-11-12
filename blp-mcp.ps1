@@ -41,7 +41,7 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $utf8
 $STDOUT = [Console]::Out
 
-$VERSION = "0.8.0"
+$VERSION = "0.9.0"
 $MAX_TEXT = 60000
 
 function Log([string] $m) { [Console]::Error.WriteLine("[blp-mcp] $m") }
@@ -80,14 +80,14 @@ function Setze-Umgebung([string] $name) {
   $script:Module = if ($z) { $z.Module } else { @{} }
   $k = $KONTEXTE[$name]
   $script:K = $k; $script:UMGEBUNG_NAME = $name
-  $script:UMGEBUNG = $k.label; $script:AUTH = $k.authUrl; $script:PROJEKT = $k.projectUrl; $script:CLIENT = $k.clientUrl; $script:PROJEKT_ID = $k.projectId
+  $script:UMGEBUNG = $k.label; $script:AUTH = $k.authUrl; $script:PROJEKT = $k.projectUrl; $script:CLIENT = $k.clientUrl; $script:PROJEKT_ID = $k.projectId; $script:BERICHT = $k.reportUrl
   $script:SYSTEM = $k.clientSystemId; $script:TLS = $k.tls
   $script:AENDERN_ERLAUBT = Erlaubt $k
 }
 
 if ($STANDARD) { Setze-Umgebung $STANDARD }
 else {
-  $K = $null; $UMGEBUNG = "(nicht konfiguriert)"; $AUTH = $PROJEKT = $CLIENT = $PROJEKT_ID = ""; $SYSTEM = "IoSidebarWebClient"; $TLS = @{}
+  $K = $null; $UMGEBUNG = "(nicht konfiguriert)"; $AUTH = $PROJEKT = $CLIENT = $PROJEKT_ID = $BERICHT = ""; $SYSTEM = "IoSidebarWebClient"; $TLS = @{}
 }
 
 # ---------- API ----------
@@ -314,7 +314,8 @@ Werkzeug "blp_tab" "Zeigt einen Sidebar-Tab mit allen Kacheln (Aktion, Prozess/A
   [ordered]@{ id = $e._id; name = $e.name; anzeige = $e.display_text; version = $e._version; geaendert = $e._last_modified_date; kacheln = @(L $e.tiles | ForEach-Object { KachelKurz $_ }) }
 }
 
-Werkzeug "blp_fields" "Feldverwaltung: Parameter (z. B. ECMServer, CFG.*), Variablen und Datenfelder." @{} @() {
+Werkzeug "blp_fields" ("Feldverwaltung: Parameter (z. B. ECMServer, CFG.*), Variablen und Datenfelder. Die Parameter gehen bei jedem Prozesslauf mit (configuration im Bericht). " +
+  "Aendern mit blp_change baustein=fieldmanager (ohne objekt), Pfad z. B. parameters/[name=ECMServer]/value; wo ein Wert benutzt wird, zeigt blp_search.") @{} @() {
   $f = Lies "fieldmanager"
   [ordered]@{ version = $f._version; geaendert = $f._last_modified_date
     parameter = @(L $f.parameters | ForEach-Object { [ordered]@{ name = $_.name; wert = $_.value } })
@@ -402,6 +403,7 @@ Werkzeug "blp_get" "Beliebiger lesender GET am Projektdienst (Pfad relativ zum P
 . (Join-Path $PSScriptRoot "blp-mcp-bilder.ps1")
 . (Join-Path $PSScriptRoot "blp-mcp-bauen.ps1")
 . (Join-Path $PSScriptRoot "blp-mcp-module.ps1")
+. (Join-Path $PSScriptRoot "blp-mcp-berichte.ps1")
 
 # ---------- Protokoll ----------
 
@@ -413,8 +415,9 @@ function Anleitung {
   } else { "Umgebung $UMGEBUNG, " + $(if ($AENDERN_ERLAUBT) { "lesen und aendern. " } else { "nur lesen (aendernde Werkzeuge gesperrt). " }) }) +
   "Aendernde Werkzeuge arbeiten zweistufig: erster Aufruf ohne freigabe liefert Pruefung und Vorschau (bisher/neu je Pfad) und einen Freigabe-Code; " +
   "erst der zweite Aufruf mit denselben Argumenten plus freigabe fuehrt aus. Vorschau dem Anwender zeigen und Zustimmung abwarten. " +
-  "Prozesse, Objekte, Kacheln, Tabs, Rollen, Feldverwaltung, Auswahlbaum (client/selection), Bildpaket, Modulkonfigurationen (z. B. Validation, AI.Foundation) und Datenabfragen (SQL, GroupQueries; blp_dataquery, baustein dataquery) - " +
+  "Prozesse, Objekte, Kacheln, Tabs, Rollen, Feldverwaltung (baustein fieldmanager), Auswahlbaum (client/selection), Bildpaket, Modulkonfigurationen (z. B. Validation, AI.Foundation) und Datenabfragen (SQL, GroupQueries; blp_dataquery, baustein dataquery) - " +
   "Speichern dort sofort festgeschrieben, ohne undo - Sicherung und blp_module_restore. " +
+  "Wo ein Wert im ganzen Projekt steht: blp_search. Ob Prozesse laufen (Laufberichte, z. B. nach einer Umstellung): blp_reports. " +
   "Veroeffentlichen macht ein Mensch im Designer; vorher sieht keine Sidebar eine Aenderung." +
   $(if ($K -and $K.hinweise) { " $($K.hinweise)" } else { "" })
 }
