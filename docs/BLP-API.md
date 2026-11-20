@@ -31,9 +31,16 @@ Jeder Aufruf braucht `Authorization: Bearer <token>` und `X-CLIENT-SYSTEM-ID: Io
 | `fieldmanager` | Parameter, Variablen, Datenfelder; **ein** Baustein ohne ID, checkout/commit/undo darunter wie beim Auswahlbaum. Die Parameter (z. B. Servernamen) gehen bei jedem Prozesslauf als `configuration` mit |
 | `dataquerymanager/load/items` | alle Datenabfragen (nur Name, Add-in, Bedingungs- und Ergebnisfelder) |
 | `dataquerymanager/<Modul-ID>/<Add-in-ID>` | Datenabfragen eines Add-ins mit Inhalt, z. B. SQL (`Module.DataConnect.DataQuery.SQL.Config` → `Sources[].DataQueries[]` mit `DataQueryString`, `FieldMappings`), GroupQueries (`…GroupQueries.Config` → `Queries[]`); `POST` speichert wie bei `module/<Modul-ID>` |
+| `triggermanager`, `triggermanager/<id>` | Zeitplan-Trigger: `{triggers: [...]}` mit `_process` (Prozess-ID), `name`, `description`, `type` 0, `start`, `schedule`, `parameters`, `enabled`; bei älteren auch `start_parameters` und `message_queue`. **PUT** `triggermanager` legt an (Rumpf ohne `_id`), ändern mit checkout/commit/undo wie bei Prozessen (erprobt 16.11.2026), DELETE löscht. `schedule.type` 1 täglich, 2 wöchentlich (`weekdays` `mon`…`sun`), 4 monatlich (`months` `jan`, `feb`, `mar`, `apr`, `may`, `june`, `july`, `aug`, `sept`, `oct`, `nov`, `dec`; `months_on`); `repeat.every_unit` 0 ms, 1 s, 2 min, 3 h, 4 Tage, 5 Monate, 6 Jahre; `time_range` = Zeitfenster am Tag, `recur` = jede n-te Woche |
 | `module/<Modul-ID>` | Modulkonfiguration, z. B. Validation (`Module.Document.Processing.Config` → `validatorConfig.documentTypes`), AI.Foundation (`aw_module_config.internal.config_key` → `promptSettings`, `modelProfiles`, `providerConfigs`); siehe Fallen |
 
 Die Prozessor-Liste eines Moduls (also die Namen der Bausteine in einem Prozess) liegt **nicht** unter dem Projekt, sondern am Projektdienst unter `GET /api/v1/module/<Modul-ID>`. Alle Module mit ihren Prozessoren auf einmal: `GET /api/v1/module` → `{modules: [{module_id, name, processors: [{info: {id, name, display_text}, input_ports: [{id}], output_ports: [{id}]}]}]}`. Prozessknoten haben selbst keinen Namen, nur `description` und `processor_id`.
+
+## Desktop-Plug-ins und Modulpakete
+
+- **Katalog** am Projektdienst über `GET /api/v1/module`. `modules[].desktop_plugins[]` enthält `info.id`, `info.name` und `routes`. Der Designer zeigt den Reiter „Konfiguration“, wenn `routes.config` eine `LOAD`-Route hat. Bei einer `website`-Route kann die URL absolut sein.
+- **Import** am Projektdienst über `PUT /api/v1/module` (`multipart/form-data`, Dateifeld `file`). Das `.mod`-Archiv enthält `info.json` mit Modul-ID, Name und Version. `GET /api/v1/module/<Modul-ID>/download` liefert das Paket für Sicherung und Prüfung.
+- **Smart-Search-Befehle** stehen im Suchprofil unter `commands[]`. Ein `DesktopPluginCommand` verweist über `action.desktop_plugin.module_id` und `plugin_id` auf das Plug-in. `action.desktop_plugin.parameters` enthält seine Konfiguration. `order` muss als JSON-Ganzzahl übertragen werden.
 
 ## Laufberichte
 
@@ -94,6 +101,7 @@ Fehlerbilder beim Speichern:
 - **Der Dienst lässt `false` und leere Listen beim Speichern weg** (z. B. `include: false` im Auswahlbaum, `tiles: []` bei einem neuen Tab). Fehlt ein Schlüssel, gilt er als `false`/leer. Zum Anhängen an eine fehlende Liste muss sie neu angelegt werden.
 - **Neuer Tab = in allen Rollen sichtbar.** Beim Anlegen trägt der BLP den Tab in jede Rolle mit Situation ein, `include: true`.
 - **Gelöschter Tab hinterlässt Rollen-Einträge** (`action_tabs` mit der alten ID). Aufräumen erst **nach** dem Löschen: Solange der Tab existiert, trägt der Dienst ihn beim Speichern einer Rolle wieder ein.
+- **Tab speichern speichert alle Rollen mit:** Nach einem Speichern von `client/sidebar/tab/action` tragen alle Rollen einen neuen `_last_modified_date` (Sekundenbruchteile später). Beim Abgleich mit der Veröffentlichung (`blp_published`) stehen sie deshalb mit in der Liste. Nach dem Entfernen von Kacheln standen in den Rollen nur noch die verbliebenen Kacheln.
 - **Neues Geschäftsobjekt = in allen Rollen sichtbar.** Beim Festschreiben trägt der Dienst es in `situations[].objects[]` jeder Rolle ein (`object_id`, `include: true`). Anders als bei Tabs entfernt das Löschen des Objekts diese Einträge wieder.
 - **Ausgecheckte Bausteine bleiben ausgecheckt:** `_locked`, `_locked_by_user`, `_locked_on` zeigen, wer einen Baustein seit wann bearbeitet. Ein im Designer offen gelassener oder abgebrochener Bearbeitungsstand kann Monate stehen bleiben.
 - **`type` und `Type` im selben Parameter:** Setter-Konfigurationen enthalten beide Schlüssel (`"type": 2, "Type": 4`). In PowerShell lässt sich so ein JSON nur als Hashtable lesen (`ConvertFrom-Json -AsHashtable`), nicht als Objekt.

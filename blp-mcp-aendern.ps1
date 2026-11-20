@@ -9,6 +9,8 @@
 #           #                    in den eingebetteten JSON-String hinein (Parameterwerte sind JSON als Text)
 #           -                    am Ende mit aktion "anhaengen": neues Listenelement
 #   aktion = setzen (Standard) | anhaengen | entfernen | sortieren (Pfad zeigt auf eine Liste, wert = Feld, Standard display_text)
+#            | verschieben (Pfad zeigt auf ein Listenelement, wert = Zielposition: Zahl ab 0, "anfang", "ende",
+#              {"vor": "[name=X]"} oder {"nach": "[name=X]"})
 #
 # Ablauf beim Ausfuehren: Sicherung (GET) -> checkout -> Aenderungen auf die Arbeitskopie -> Pruefen
 # (keine null in Listen, Prozessparameter nur Text) -> Speichern (POST) -> commit -> Nachlesen.
@@ -46,6 +48,10 @@ $BAUSTEINE = [ordered]@{
   # links nennen nur self/update/delete. id = "<Modul-ID>/<Add-in-ID>".
   # Erprobt 10.11.2026 auf Test (SQL: Description gesetzt, v13->v14, nur diese 15 Zeichen anders; zurueck per blp_module_restore v15).
   "dataquery"                 = @{ erprobt = $true;  text = "Datenabfragen (Add-in)"; direkt = $true }
+  # Zeitplan-Trigger (triggermanager/<id>): links nennen checkout/commit/update(POST)/undo/delete wie bei Prozessen.
+  # Anlegen per PUT triggermanager erprobt 16.11.2026. Aendern per checkout/speichern/commit
+  # erprobt 16.11.2026 auf Test (description gesetzt und zurueck, 1.0 -> 2.0 -> 3.0, sonst nichts veraendert).
+  "triggermanager"            = @{ erprobt = $true;  text = "Zeitplan-Trigger" }
 }
 
 # Adresse eines Bausteins relativ zum Projekt; Einzelbausteine (Auswahlbaum) haben keine ID.
@@ -185,13 +191,48 @@ function Setze($n, [string[]] $segs, [int] $i, [string] $aktion, $wert, [string]
   return $n
 }
 
+# Verschiebt ein Element einer Liste. ziel: Zahl (Position in der neuen Liste, ab 0), "anfang", "ende",
+# {vor: auswahl} oder {nach: auswahl} mit derselben Auswahl wie im Pfad ([name=X], [tile_id^=ab], Index).
+function Verschiebe($liste, [string] $wahl, $ziel, [string] $wo) {
+  $k = Waehle $liste $wahl $wo; $el = $liste[$k]
+  $rest = [System.Collections.Generic.List[object]]::new(); for ($i = 0; $i -lt $liste.Count; $i++) { if ($i -ne $k) { $rest.Add($liste[$i]) } }
+  $pos = $null
+  if ($null -eq $ziel) { throw "Pfad $wo : wert fehlt (Zielposition: Zahl ab 0, 'anfang', 'ende', {vor: ...} oder {nach: ...})." }
+  if ($ziel -is [string] -and $ziel -eq "anfang") { $pos = 0 }
+  elseif ($ziel -is [string] -and $ziel -eq "ende") { $pos = $rest.Count }
+  elseif ($ziel -is [int] -or $ziel -is [long] -or ($ziel -is [string] -and $ziel -match '^\d+$')) { $pos = [int]"$ziel"; if ($pos -gt $rest.Count) { throw "Pfad $wo : Position $pos gibt es nicht (0 bis $($rest.Count))." } }
+  else {
+    $z = if ($ziel -is [System.Collections.IDictionary]) { [pscustomobject]$ziel } else { $ziel }
+    $vor = $z.PSObject.Properties["vor"]; $nach = $z.PSObject.Properties["nach"]
+    if (($null -eq $vor) -eq ($null -eq $nach)) { throw "Pfad $wo : wert als Zahl, 'anfang', 'ende', {vor: auswahl} oder {nach: auswahl}." }
+    $bezug = if ($vor) { "$($vor.Value)" } else { "$($nach.Value)" }
+    $j = Waehle $rest.ToArray() $bezug "$wo (Bezug)"
+    $pos = if ($vor) { $j } else { $j + 1 }
+  }
+  if ($pos -eq $k) { throw "Pfad $wo : das Element steht schon an Position $k." }
+  $rest.Insert($pos, $el)
+  ,($rest.ToArray())
+}
+
+# Beschriftung eines Listenelements fuer die Vorschau (name, sonst display_text, sonst Index)
+function ListeFeld($liste) { $e = @(L $liste) | Select-Object -First 1; if ($e -and $e.PSObject.Properties["name"]) { "name" } else { "display_text" } }
+
 function LeerWert($v) { $null -eq $v -or ($v -is [bool] -and -not $v) -or (($v -is [array] -or $v -is [System.Collections.IList]) -and $v.Count -eq 0) }
 function SortierFeld($c) { if ($c.Contains("wert") -and "$($c.wert)") { "$($c.wert)" } else { "display_text" } }
 
 function Wende($obj, $aenderungen) {
   foreach ($c in @(L $aenderungen)) {
     $aktion = if ($c.aktion) { "$($c.aktion)" } else { "setzen" }
-    if ($aktion -notin "setzen", "anhaengen", "entfernen", "sortieren") { throw "aktion '$aktion' unbekannt (setzen, anhaengen, entfernen, sortieren)." }
+    if ($aktion -notin "setzen", "anhaengen", "entfernen", "sortieren", "verschieben") { throw "aktion '$aktion' unbekannt (setzen, anhaengen, entfernen, sortieren, verschieben)." }
+    if ($aktion -eq "verschieben") {
+      $segs = Segmente "$($c.pfad)"
+      if ($segs.Count -lt 2) { throw "Pfad $($c.pfad): verschieben braucht den Pfad auf ein Listenelement, z. B. tiles/[name=X]." }
+      $elternSegs = @($segs[0..($segs.Count - 2)]); $h = Hole $obj $elternSegs
+      if (-not $h.gefunden) { throw "Pfad $($c.pfad): $($h.grund)" }
+      if ($h.wert -isnot [array]) { throw "Pfad $($c.pfad): das vorletzte Segment muss eine Liste sein." }
+      $obj = Setze $obj $elternSegs 0 "setzen" (Verschiebe $h.wert $segs[-1] $c.wert "$($c.pfad)") ""
+      continue
+    }
     if ($aktion -eq "sortieren") {
       # Liste am Pfad lesen, sortiert zuruecksetzen - so gilt fuer sortieren dieselbe Pruefung wie fuer setzen.
       $segs = Segmente "$($c.pfad)"; $h = Hole $obj $segs
@@ -234,6 +275,7 @@ function Pruefe($obj, [string] $baustein) {
       if ($p.Value -isnot [string]) { $fehler.Add("parameters/$($p.Name) muss Text sein (eingebettetes JSON mit /# aendern).") }
     }
   }
+  if ($baustein -eq "triggermanager") { foreach ($f in @(L (TriggerPruefen $obj))) { $fehler.Add($f) } }   # blp-mcp-trigger.ps1
   $fehler
 }
 
@@ -257,6 +299,7 @@ function BausteinFinden([string] $baustein, [string] $wer) {
     "role" { return (Finde ((Lies "role").roles) $wer "Rolle")._id }
     "module" { return (ModulFinden $wer).module_id }
     "dataquery" { return (AddinFinden $wer).id }
+    "triggermanager" { return (Finde ((Lies "triggermanager").triggers) $wer "Trigger")._id }
   }
   throw "Baustein '$baustein' wird nicht unterstuetzt: $($BAUSTEINE.Keys -join ', ')."
 }
@@ -298,7 +341,7 @@ function ZweiSchritte([string] $name, $a, [scriptblock] $pruefen, [scriptblock] 
 Werkzeug "blp_read_path" ("Liest den Wert an einem Pfad eines Bausteins (gleiche Pfadsprache wie blp_change), z. B. 'nodes/[id^=23d05bc3]/parameters/Module.Elo.ActionNode.EloAs/#/AsDefinitions/0' " +
   "oder beim Auswahlbaum (client/selection, ohne objekt) 'selections/[name=Einkauf]/childs/[name=Rechnung]', bei der Feldverwaltung (fieldmanager, ohne objekt) 'parameters/[name=ECMServer]/value'. Zum Vorbereiten von Aenderungen.") @{
   baustein = @{ type = "string"; enum = @($BAUSTEINE.Keys) }
-  objekt = @{ type = "string"; description = "ID oder Name des Bausteins (Prozess, Objekt, Tab, Suchprofil, Rolle, Modul, Datenabfrage-Add-in wie SQL); entfaellt bei client/selection und fieldmanager" }
+  objekt = @{ type = "string"; description = "ID oder Name des Bausteins (Prozess, Objekt, Tab, Suchprofil, Rolle, Modul, Datenabfrage-Add-in wie SQL, Trigger); entfaellt bei client/selection und fieldmanager" }
   pfad = @{ type = "string" } } @("baustein", "pfad") {
   param($a)
   $id = BausteinFinden $a.baustein $a.objekt
@@ -309,6 +352,17 @@ Werkzeug "blp_read_path" ("Liest den Wert an einem Pfad eines Bausteins (gleiche
 }
 
 # Plan und Ausfuehrung einer Pfad-Aenderung - gemeinsam fuer blp_change und blp_add_tile.
+# Rollen/Situationen, deren Tab-Eintraege eine Kachel (action_id = tile_id) nennen
+function RollenMitKachel([string] $tileId) {
+  foreach ($r in @(L (Lies "role").roles)) {
+    foreach ($si in @(L $r.situations)) {
+      foreach ($at in @(L $si.action_tabs)) {
+        if (@(L $at.actions | Where-Object { $_.action_id -eq $tileId }).Count) { "$($r.name) / $($si.name)" }
+      }
+    }
+  }
+}
+
 function AenderungPlan([string] $baustein, [string] $objekt, $aenderungen, [string] $aktionText) {
   if (-not $BAUSTEINE.Contains($baustein)) { throw "Baustein '$baustein' nicht freigegeben." }
   if (@(L $aenderungen).Count -eq 0) { throw "aenderungen ist leer." }
@@ -320,6 +374,11 @@ function AenderungPlan([string] $baustein, [string] $objekt, $aenderungen, [stri
   PruefeMasken $ist $neu
   $zeilen = foreach ($c in @(L $aenderungen)) {
     $segs = Segmente "$($c.pfad)"; $vor = Hole $ist $segs; $nach = Hole $neu $segs
+    if ("$($c.aktion)" -eq "verschieben") {
+      $es = @($segs[0..($segs.Count - 2)]); $lv = (Hole $ist $es).wert; $ln = (Hole $neu $es).wert; $f = ListeFeld $lv
+      [ordered]@{ pfad = $c.pfad; aktion = "verschieben"; bisher = (Kurz (ListenText $lv $f) 3000); neu = (Kurz (ListenText $ln $f) 3000) }
+      continue
+    }
     if ("$($c.aktion)" -eq "sortieren") {
       # Reihenfolge zeigen statt der ganzen Liste
       $f = SortierFeld $c
@@ -331,6 +390,15 @@ function AenderungPlan([string] $baustein, [string] $objekt, $aenderungen, [stri
   }
   $warn = @()
   if (-not $BAUSTEINE[$baustein].erprobt) { $warn += "Baustein '$baustein' wurde bisher noch nie per API geaendert - Ergebnis im Designer pruefen." }
+  if ($baustein -eq "client/sidebar/tab/action") {
+    foreach ($c in @(L $aenderungen | Where-Object { "$($_.aktion)" -eq "entfernen" })) {
+      $weg = (Hole $ist (Segmente "$($c.pfad)")).wert
+      if ($weg -and $weg.PSObject.Properties["tile_id"]) {
+        $r = @(RollenMitKachel $weg.tile_id)
+        if ($r.Count) { $warn += "Kachel '$($weg.name)' [$($weg.tile_id)] steht in $($r.Count) Rolleneintrag/-eintraegen: $(($r | Select-Object -First 10) -join '; '). Bisher beobachtet: nach dem Entfernen standen in den Rollen nur noch die verbliebenen Kacheln; ob der Dienst sie mit entfernt hat, zeigt das Ergebnis (rollenEintraege). Bleiben welche stehen: danach mit blp_change baustein=role aufraeumen." }
+      }
+    }
+  }
   if ((JStr $ist) -eq (JStr $neu)) { throw "Keine Aenderung - alle Werte sind schon so." }
   if ($BAUSTEINE[$baustein].direkt) {
     # Gesperrt heisst bei Modulen meist: ein Speichern mit veraltetem Token ist gescheitert. Erfolgreiches Speichern hebt die Sperre auf.
@@ -389,6 +457,12 @@ function AenderungAusfuehren([string] $b, $plan, $aenderungen) {
       if (-not $h.gefunden -or (ListenText $h.wert $f) -ne (ListenText (SortiereListe $h.wert $f) $f)) { $abweichung += "$($c.pfad) ist nach dem Speichern nicht sortiert" }
       continue
     }
+    if ("$($c.aktion)" -eq "verschieben") {
+      # Reihenfolge der ganzen Liste gegen die geplante vergleichen (der Wert am Pfad ist ja das verschobene Element, nicht das Ziel)
+      $es = @($segs[0..($segs.Count - 2)]); $soll = (Hole (Wende (JObj $plan.roh) $aenderungen) $es).wert; $ist2 = (Hole $nach $es).wert; $f = ListeFeld $soll
+      if ((ListenText $ist2 $f) -ne (ListenText $soll $f)) { $abweichung += "$($c.pfad): Reihenfolge nach dem Speichern anders als geplant" }
+      continue
+    }
     $h = Hole $nach $segs
     # Entfernen: bei Name oder Auswahl [..] darf der Pfad danach nicht mehr gefunden werden; bei einem Index rueckt das naechste Element nach.
     if ("$($c.aktion)" -eq "entfernen") { if ($h.gefunden -and ($segs[-1] -notmatch '^\d+$')) { $abweichung += "$($c.pfad) noch vorhanden" }; continue }
@@ -407,21 +481,32 @@ Werkzeug "blp_change" ("Aendert einen BLP-Baustein gezielt ueber Pfade (zweistuf
   "module (Modulkonfiguration, objekt = Modulname wie Validation oder AI.Foundation; Pfad z. B. parameters/Module.Document.Processing.Config/#/validatorConfig/...; " +
   "ohne checkout/undo sofort festgeschrieben, Sicherung vorher, zurueck mit blp_module_restore), " +
   "dataquery (Datenabfragen eines Add-ins, objekt = SQL, GroupQueries, OleDb ...; Pfad wie ihn blp_dataquery nennt, z. B. " +
-  "parameters/Module.DataConnect.DataQuery.SQL.Config/#/Sources/[Name=ERP-Database]/DataQueries/[Name=ERP_Customer]/DataQueryString; gleicher Speicherweg wie module). " +
+  "parameters/Module.DataConnect.DataQuery.SQL.Config/#/Sources/[Name=ERP-Database]/DataQueries/[Name=ERP_Customer]/DataQueryString; gleicher Speicherweg wie module), " +
+  "triggermanager (Zeitplan-Trigger, objekt = Triggername oder ID aus blp_triggers; Pfade z. B. enabled, schedule/repeat/every, schedule/time_range/end/hour, schedule/weekdays/sat). " +
   "Pfad: Segmente mit '/', Listen per Index oder [feld=wert]/[feld^=anfang], '#' = in eingebettetes JSON, '/-' + aktion anhaengen = neues Element, " +
   "aktion sortieren = Liste am Pfad alphabetisch (de-DE) nach Feld wert (Standard display_text), z. B. selections/[name=Einkauf]/childs. " +
+  "aktion verschieben = Element am Pfad an eine andere Stelle derselben Liste, wert = Position ab 0, 'anfang', 'ende', {vor: '[name=X]'} oder {nach: '[name=X]'}, " +
+  "z. B. Kachel im Tab: baustein client/sidebar/tab/action, objekt = Tab, pfad tiles/[name=Kachel]. Kachel entfernen: aktion entfernen, pfad tiles/[name=Kachel]; die Vorschau nennt Rolleneintraege dieser Kachel. " +
   "Ablauf: Sicherung, checkout, Aenderung, Pruefung (keine null in Listen, Prozessparameter nur Text), speichern, commit, nachlesen; bei Fehler undo. " +
   "Veroeffentlichen macht ein Mensch im Designer. Nur in Umgebungen mit allowChanges.") @{
   baustein = @{ type = "string"; enum = @($BAUSTEINE.Keys) }
-  objekt = @{ type = "string"; description = "ID oder Name (bei module: Modulname oder Modul-ID; bei dataquery: Add-in wie SQL oder GroupQueries); entfaellt bei client/selection und fieldmanager" }
+  objekt = @{ type = "string"; description = "ID oder Name (bei module: Modulname oder Modul-ID; bei dataquery: Add-in wie SQL oder GroupQueries; bei triggermanager: Triggername); entfaellt bei client/selection und fieldmanager" }
   aenderungen = @{ type = "array"; description = "Liste von {pfad, wert, aktion}"; items = @{ type = "object"; properties = @{
       pfad = @{ type = "string" }; wert = @{ description = "Neuer Wert (beliebiges JSON); entfaellt bei entfernen; bei sortieren das Feld (Standard display_text)" }
-      aktion = @{ type = "string"; enum = @("setzen", "anhaengen", "entfernen", "sortieren") } }; required = @("pfad") } }
+      aktion = @{ type = "string"; enum = @("setzen", "anhaengen", "entfernen", "sortieren", "verschieben") } }; required = @("pfad") } }
   freigabe = @{ type = "string"; description = "Leer fuer die Vorschau; zum Ausfuehren der Freigabe-Code aus der Vorschau" } } @("baustein", "aenderungen") {
   param($a)
   ZweiSchritte "blp_change" $a { AenderungPlan "$($a.baustein)" "$($a.objekt)" $a.aenderungen "" } {
     param($plan)
     $r = AenderungAusfuehren "$($a.baustein)" $plan $a.aenderungen
+    if ("$($a.baustein)" -eq "client/sidebar/tab/action") {
+      $ist = JObj $plan.roh; $rest = @()
+      foreach ($c in @(L $a.aenderungen | Where-Object { "$($_.aktion)" -eq "entfernen" })) {
+        $weg = (Hole $ist (Segmente "$($c.pfad)")).wert
+        if ($weg -and $weg.PSObject.Properties["tile_id"]) { $rest += @(RollenMitKachel $weg.tile_id | ForEach-Object { "$($weg.name): $_" }) }
+      }
+      if (@(L $a.aenderungen | Where-Object { "$($_.aktion)" -eq "entfernen" }).Count) { $r.rollenEintraege = $(if ($rest.Count) { $rest } else { "keine mehr" }) }
+    }
     $r.Remove("nachher"); $r
   }
 } -Schreibt

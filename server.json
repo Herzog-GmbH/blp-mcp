@@ -8,12 +8,12 @@
     "source": "github"
   },
   "websiteUrl": "https://github.com/Herzog-GmbH/blp-mcp",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/Herzog-GmbH/blp-mcp/releases/download/v0.9.0/blp-mcp-0.9.0.mcpb",
-      "fileSha256": "be213423414a41561342b97587df9456b981fadd19014986deff527a8e0e1aa5",
+      "identifier": "https://github.com/Herzog-GmbH/blp-mcp/releases/download/v0.10.0/blp-mcp-0.10.0.mcpb",
+      "fileSha256": "a4b005d71a017f4de9eed58f8d3e1c5a35e1d77edec81ae7532ef7ab62c18483",
       "transport": {
         "type": "stdio"
       }

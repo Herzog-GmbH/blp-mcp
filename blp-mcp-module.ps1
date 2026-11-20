@@ -14,10 +14,14 @@ $MODUL_ORDNER = Join-Path $DATEN "module"
 
 $script:Modulliste = $null
 $script:Addinliste = $null
+function InstallierteModule {
+  $antwort = JObj (Blp-Get "$PROJEKT/api/v1/module")
+  if ($antwort.PSObject.Properties["modules"]) { L $antwort.modules } else { L $antwort }
+}
+
 function Modulliste {
   if ($script:Modulliste) { return $script:Modulliste }
-  $d = JObj (Blp-Get "$PROJEKT/api/v1/module")
-  $mods = if ($d.modules) { $d.modules } else { $d }
+  $mods = @(InstallierteModule)
   $script:Modulliste = @(L $mods | ForEach-Object { [pscustomobject]@{ module_id = "$($_.module_id)"; id = "$($_.module_id)"; name = "$($_.name)"; display_text = "$($_.display_text)"
       version = "$($_.version)"; beschreibung = "$($_.description)"; oberflaeche = "$($_.config_control.type)"; prozessoren = @(L $_.processors).Count } })
   # Datenabfrage-Add-ins (SQL, OleDb, GroupQueries, IX Query, OData, SAP SOAP ...) haengen an ihren Modulen.
@@ -34,6 +38,121 @@ function AddinFinden([string] $wer) {
   $t = @($l | Where-Object { $_.addin_id -eq $wer })
   if ($t.Count -eq 1) { return $t[0] }
   Finde $l $wer "Datenabfrage-Add-in"
+}
+
+function ModulpaketManifest([string] $pfad) {
+  $archiv = [IO.Compression.ZipFile]::OpenRead($pfad)
+  try {
+    $eintrag = $archiv.GetEntry("info.json")
+    if (-not $eintrag) { throw "Im Modulpaket fehlt info.json." }
+    $leser = [IO.StreamReader]::new($eintrag.Open())
+    try { $manifest = JObj ($leser.ReadToEnd()) } finally { $leser.Dispose() }
+  } finally { $archiv.Dispose() }
+
+  $id = [guid]::Empty
+  if (-not [guid]::TryParse($manifest.module_id, [ref] $id) -or $id -eq [guid]::Empty -or
+      [string]::IsNullOrWhiteSpace($manifest.name) -or [string]::IsNullOrWhiteSpace($manifest.version)) {
+    throw "info.json braucht module_id (GUID), name und version."
+  }
+  $manifest
+}
+
+function ModulpaketHerunterladen([guid] $id, [string] $ziel) {
+  Invoke-WebRequest -Uri "$PROJEKT/api/v1/module/$id/download" -Headers (Header) -OutFile $ziel @TLS
+}
+
+Werkzeug "blp_module_install" ("Importiert ein lokales BLP-Modulpaket (.mod) am Projektdienst. Zweistufig mit Vorschau und Freigabe. " +
+  "Beim Ersetzen wird das bisherige Paket gesichert. Anschliessend wird das ausgelieferte Paket per SHA-256 verglichen. " +
+  "Das Modul wird erst nach Veroeffentlichen im Designer an den Client verteilt.") @{
+  datei = @{ type = "string"; description = "Lokaler Dateipfad eines .mod-Pakets" }
+  freigabe = @{ type = "string"; description = "Leer fuer die Vorschau; danach Freigabe-Code der Vorschau" }
+} @("datei") {
+  param($a)
+  ZweiSchritte "blp_module_install" $a {
+    $file = Get-Item -LiteralPath $a.datei -ErrorAction Stop
+    if ($file -isnot [IO.FileInfo] -or $file.Extension -ine ".mod") { throw "Eine .mod-Datei angeben." }
+    $manifest = ModulpaketManifest $file.FullName
+    $id = [guid] $manifest.module_id
+    $sha = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+    $vorher = InstallierteModule | Where-Object { [string]$_.module_id -eq "$id" } | Select-Object -First 1
+    $vorschau = [ordered]@{ modul = $manifest.name; id = "$id"; vorher = $vorher.version; nachher = $manifest.version
+      datei = $file.FullName; sha256 = $sha; umgebung = $UMGEBUNG }
+    $warnungen = @("Der Modulimport wirkt sofort im Projektdienst. Die Verteilung an Clients erfolgt nach Veroeffentlichen im Designer.")
+    if ($vorher) { $warnungen += "Das bisherige Modulpaket wird vor dem Import gesichert." }
+    @{ vorschau = $vorschau; warnungen = $warnungen; fp = "$id|$sha|$($vorher.version)|$($vorher._checksum)"
+       datei = $file.FullName; sha = $sha; id = $id; manifest = $manifest; vorher = $vorher }
+  } {
+    param($plan)
+    $temp = Join-Path ([IO.Path]::GetTempPath()) ("blp-modul-" + [guid]::NewGuid())
+    $null = [IO.Directory]::CreateDirectory($temp)
+    $paket = Join-Path $temp ([IO.Path]::GetFileName($plan.datei))
+    $download = Join-Path $temp ("pruefung-" + [guid]::NewGuid() + ".mod")
+    $sicherung = $null
+    try {
+      Copy-Item -LiteralPath $plan.datei -Destination $paket
+      if ((Get-FileHash -LiteralPath $paket -Algorithm SHA256).Hash -ne $plan.sha) { throw "Die Paketdatei hat sich seit der Vorschau geaendert." }
+      if ($plan.vorher) {
+        ModulpaketHerunterladen $plan.id $download
+        $alt = ModulpaketManifest $download
+        if ([guid]$alt.module_id -ne $plan.id -or $alt.version -ne $plan.vorher.version) { throw "Das installierte Modul hat sich vor dem Import geaendert." }
+        $null = New-Item -ItemType Directory -Path $MODUL_ORDNER -Force
+        $sicherung = Join-Path $MODUL_ORDNER ("{0}-{1}-vorher.mod" -f $plan.id, (Get-Date -Format "yyyyMMdd-HHmmss-fff"))
+        Copy-Item -LiteralPath $download -Destination $sicherung
+      }
+      $null = Invoke-WebRequest -Uri "$PROJEKT/api/v1/module" -Method Put -Headers (Header) -Form @{ file = (Get-Item -LiteralPath $paket) } @TLS
+      $script:Modulliste = $script:Addinliste = $script:Katalog = $null
+      try {
+        ModulpaketHerunterladen $plan.id $download
+        if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $plan.sha) { throw "SHA-256 weicht ab." }
+      } catch {
+        throw "Import beantwortet, Nachpruefung des Modulpakets fehlgeschlagen: $($_.Exception.Message) Sicherung: $sicherung"
+      }
+      [ordered]@{ modul = $plan.manifest.name; id = "$($plan.id)"; vorher = $plan.vorher.version; version = $plan.manifest.version
+        sha256 = $plan.sha; sicherung = $sicherung; hinweis = "Wirksam nach Veroeffentlichen im Designer." }
+    } finally {
+      [IO.File]::Delete($paket)
+      [IO.File]::Delete($download)
+      [IO.Directory]::Delete($temp)
+    }
+  }
+} -Schreibt
+
+Werkzeug "blp_desktop_plugins" "Listet installierte Desktop-Plug-ins mit Modul, IDs und Designer-Konfigurationsrouten. Optional nach einem Modul filtern." @{
+  modul = @{ type = "string"; description = "Modulname, Anzeigename oder Modul-ID" }
+} @() {
+  param($a)
+  $module = @(InstallierteModule)
+  if ($a.modul) {
+    $id = (ModulFinden $a.modul).module_id
+    $module = @($module | Where-Object module_id -eq $id)
+  }
+  [ordered]@{ desktopPlugins = @(foreach ($m in $module) {
+    foreach ($p in @(L $m.desktop_plugins)) {
+      $konfig = @(L $p.routes.config)
+      [ordered]@{ modul = $m.name; modulId = $m.module_id; modulVersion = $m.version; name = $p.info.name
+        anzeige = $p.info.display_text; pluginId = $p.info.id; designerKonfiguration = ($konfig.function -contains "LOAD")
+        konfigurationsrouten = $konfig }
+    }
+  }) }
+}
+
+Werkzeug "blp_smartsearch_commands" ("Listet die Befehle eines Smart-Search-Profils oder zeigt einen einzelnen Befehl, mit Plug-in-IDs, Optionen " +
+  "und Pfaden fuer blp_read_path und blp_change baustein=smartsearch. Liefert Parameterschluessel ohne ihre Werte.") @{
+  profil = @{ type = "string"; description = "Name oder ID des Suchprofils" }
+  befehl = @{ type = "string"; description = "Optionaler Befehlsname, Anzeigename oder ID" }
+} @("profil") {
+  param($a)
+  $profilId = BausteinFinden "smartsearch" $a.profil
+  $profil = Lies "smartsearch/$profilId"
+  $befehle = @($profil.commands | Where-Object { $_ } | ForEach-Object {
+    $p = $_.action.desktop_plugin
+    $pfad = "commands/[id=$($_.id)]"
+    [pscustomobject]@{ id = $_.id; name = $_.name; display_text = $_.display_text; typ = $_.action.type
+      reihenfolge = $_.order; optionen = $_.options; modulId = $p.module_id; pluginId = $p.plugin_id; pfad = $pfad
+      parameter = @(foreach ($feld in $p.parameters.PSObject.Properties) { "$pfad/action/desktop_plugin/parameters/$($feld.Name)" }) }
+  })
+  if ($a.befehl) { $befehle = @(Finde $befehle $a.befehl "Smart-Search-Befehl") }
+  [ordered]@{ profil = $profil.name; id = $profilId; version = $profil._version; befehle = $befehle }
 }
 
 # Parameterwerte sind JSON als Text: Entpacke aus blp-mcp-bauen.ps1. Schluessel, die sich nur in Gross-/Kleinschreibung

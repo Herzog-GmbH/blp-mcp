@@ -41,7 +41,7 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $utf8
 $STDOUT = [Console]::Out
 
-$VERSION = "0.9.0"
+$VERSION = "0.10.0"
 $MAX_TEXT = 60000
 
 function Log([string] $m) { [Console]::Error.WriteLine("[blp-mcp] $m") }
@@ -381,11 +381,49 @@ Werkzeug "blp_dataqueries" "Listet die Datenabfragen (Name, Modul, Bedingungsfel
   [ordered]@{ anzahl = @(L $l).Count; abfragen = @(L $l | ForEach-Object { [ordered]@{ name = $_.name; modul = $_.module; typ = $_.type; bedingung = @(L $_.condition_fields | ForEach-Object { $_.name }); felder = @(L $_.fields) } }) }
 }
 
-Werkzeug "blp_published" "Stand der Veroeffentlichung am Client-Dienst (was die Sidebar gerade ausliefert): Projekte mit last_update." @{} @() {
+# Zeitpunkt aus dem Dienst (bis zu 9 Nachkommastellen, .NET liest hoechstens 7)
+function Zeitpunkt([string] $s) {
+  if (-not $s) { return $null }
+  try { [DateTimeOffset]::Parse(($s -replace '(\.\d{7})\d+', '$1'), [Globalization.CultureInfo]::InvariantCulture) } catch { $null }
+}
+
+# Letzte Speicherzeiten der Bausteine (frisch gelesen, ohne den Zwischenspeicher der Prozessliste)
+function Speicherstaende {
+  $out = @()
+  function Eintrag($art, $o) { if ($o -and $o._last_modified_date) { [pscustomobject]@{ art = $art; name = $(if ($o.name) { $o.name } elseif ($o.display_text) { $o.display_text } else { $o._id }); id = $o._id; geaendert = $o._last_modified_date; von = $o._last_author } } }
+  $d = Lies "processengine"
+  foreach ($art in "server_processes", "client_processes", "sub_processes", "templates") { foreach ($ord in @(L $d.$art)) { foreach ($p in @(L $ord.processes)) { $out += Eintrag "Prozess" $p } } }
+  foreach ($o in @(L (Lies "objectmanager").objects)) { $out += Eintrag "Geschaeftsobjekt" $o }
+  foreach ($o in @(L (Lies "client/sidebar/tab/action").tabs)) { $out += Eintrag "Sidebar-Tab" $o }
+  foreach ($o in @(L (Lies "role").roles)) { $out += Eintrag "Rolle" $o }
+  $ss = Lies "smartsearch"; foreach ($o in @(L $(if ($ss.lists) { $ss.lists } else { $ss }))) { $out += Eintrag "Smart-Search-Profil" $o }
+  foreach ($o in @(L (Lies "triggermanager").triggers)) { $out += Eintrag "Zeitplan-Trigger" $o }
+  $out += Eintrag "Auswahlbaum (Client)" (Lies "client/selection")
+  $out += Eintrag "Feldverwaltung" (Lies "fieldmanager")
+  @($out | Where-Object { $_ })
+}
+
+Werkzeug "blp_published" ("Stand der Veroeffentlichung am Client-Dienst (was die Sidebar gerade ausliefert): Projekte mit last_update. " +
+  "Dazu (Standard, abschaltbar mit pruefen=false) welche Bausteine nach dieser Veroeffentlichung gespeichert wurden und deshalb noch nicht in der Sidebar sind: " +
+  "Prozesse, Geschaeftsobjekte, Sidebar-Tabs, Rollen, Smart-Search-Profile, Zeitplan-Trigger, Auswahlbaum, Feldverwaltung (Modulkonfigurationen und Datenabfragen nicht).") @{
+  pruefen = @{ type = "boolean"; description = "Standard true: Speicherzeiten der Bausteine gegen die Veroeffentlichung vergleichen" } } @() {
+  param($a)
   $j = Blp-Get "$CLIENT/api/v1/project" | ConvertFrom-Json -Depth 50
-  $liste = if ($j.projects) { $j.projects } else { $j }
-  [ordered]@{ clientDienst = $CLIENT; hinweis = "last_update = letzte Veroeffentlichung, die die Sidebar ausliefert"
-    projekte = @(L $liste | ForEach-Object { [ordered]@{ id = $_._id; name = $_.name; version = $_._version; veroeffentlicht = $_.last_update } }) }
+  $liste = @(L $(if ($j.projects) { $j.projects } else { $j }))
+  $r = [ordered]@{ clientDienst = $CLIENT; hinweis = "last_update = letzte Veroeffentlichung, die die Sidebar ausliefert"
+    projekte = @($liste | ForEach-Object { [ordered]@{ id = $_._id; name = $_.name; version = $_._version; veroeffentlicht = $_.last_update } }) }
+  if ($a.pruefen -eq $false) { return $r }
+  $pub = @($liste | ForEach-Object { Zeitpunkt $_.last_update } | Where-Object { $_ } | Sort-Object -Descending) | Select-Object -First 1
+  if (-not $pub) { $r.vergleich = "Keine Veroeffentlichungszeit lesbar."; return $r }
+  $spaeter = @(Speicherstaende | Where-Object { $t = Zeitpunkt $_.geaendert; $t -and $t -gt $pub } | Sort-Object geaendert)
+  $r.vergleichMit = $pub.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+  if ($liste.Count -gt 1) { $r.hinweisProjekte = "Mehrere Projekte am Client-Dienst; verglichen mit der neuesten Veroeffentlichung." }
+  $r.nachVeroeffentlichungGespeichert = $spaeter.Count
+  if ($spaeter.Count) { $je = [ordered]@{}; foreach ($x in $spaeter) { $je[$x.art] = 1 + $(if ($je.Contains($x.art)) { $je[$x.art] } else { 0 }) }; $r.jeArt = $je }
+  if (@($spaeter | Where-Object art -eq "Rolle").Count -and @($spaeter | Where-Object art -eq "Sidebar-Tab").Count) { $r.hinweisRollen = "Beim Speichern eines Tabs speichert der Dienst die Rollen mit; sie stehen deshalb auch in der Liste." }
+  $r.stand = $(if ($spaeter.Count) { "NICHT VEROEFFENTLICHT: $($spaeter.Count) Baustein(e) nach der letzten Veroeffentlichung gespeichert - im Designer veroeffentlichen." } else { "Alles Gespeicherte ist veroeffentlicht (Module und Datenabfragen nicht geprueft)." })
+  if ($spaeter.Count) { $r.bausteine = @($spaeter | Select-Object -First 50 | ForEach-Object { [ordered]@{ art = $_.art; name = $_.name; gespeichert = $_.geaendert; von = $_.von } }) }
+  $r
 }
 
 Werkzeug "blp_get" "Beliebiger lesender GET am Projektdienst (Pfad relativ zum Projekt, z. B. 'smartsearch' oder 'client/selection') oder mit fuehrendem '/' relativ zum Dienst (z. B. '/api/v1/image/package'). Antwort maskiert und gekuerzt." @{
@@ -404,6 +442,7 @@ Werkzeug "blp_get" "Beliebiger lesender GET am Projektdienst (Pfad relativ zum P
 . (Join-Path $PSScriptRoot "blp-mcp-bauen.ps1")
 . (Join-Path $PSScriptRoot "blp-mcp-module.ps1")
 . (Join-Path $PSScriptRoot "blp-mcp-berichte.ps1")
+. (Join-Path $PSScriptRoot "blp-mcp-trigger.ps1")
 
 # ---------- Protokoll ----------
 
@@ -417,6 +456,8 @@ function Anleitung {
   "erst der zweite Aufruf mit denselben Argumenten plus freigabe fuehrt aus. Vorschau dem Anwender zeigen und Zustimmung abwarten. " +
   "Prozesse, Objekte, Kacheln, Tabs, Rollen, Feldverwaltung (baustein fieldmanager), Auswahlbaum (client/selection), Bildpaket, Modulkonfigurationen (z. B. Validation, AI.Foundation) und Datenabfragen (SQL, GroupQueries; blp_dataquery, baustein dataquery) - " +
   "Speichern dort sofort festgeschrieben, ohne undo - Sicherung und blp_module_restore. " +
+  "Zeitplan-Trigger: blp_triggers, anlegen mit blp_create_trigger, aendern/aktivieren mit blp_change baustein triggermanager. " +
+  "Desktop-Plug-ins: blp_desktop_plugins; zugehoerige Menuebefehle: blp_smartsearch_commands; .mod-Pakete importieren: blp_module_install. " +
   "Wo ein Wert im ganzen Projekt steht: blp_search. Ob Prozesse laufen (Laufberichte, z. B. nach einer Umstellung): blp_reports. " +
   "Veroeffentlichen macht ein Mensch im Designer; vorher sieht keine Sidebar eine Aenderung." +
   $(if ($K -and $K.hinweise) { " $($K.hinweise)" } else { "" })

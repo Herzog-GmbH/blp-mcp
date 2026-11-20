@@ -1,5 +1,19 @@
 # Änderungen
 
+## 0.10.0 – 2026-11-20
+
+- **Kacheln umsortieren:** `blp_change` mit `aktion: verschieben` setzt ein Listenelement an eine andere Stelle derselben Liste; `wert` = Position ab 0, `anfang`, `ende`, `{vor: "[name=X]"}` oder `{nach: "[name=X]"}`. Gedacht für Kacheln im Tab (`baustein: client/sidebar/tab/action`, Pfad `tiles/[name=Kachel]`), geht aber in jeder Liste. Vorschau und Kontrolle nach dem Speichern vergleichen die ganze Reihenfolge. Auf Test erprobt (verschoben und zurück).
+- **Kachel entfernen:** Die Vorschau von `blp_change … aktion entfernen` an einem Tab nennt die Rollen und Situationen, deren Tab-Einträge die Kachel noch führen; das Ergebnis (`rollenEintraege`) zeigt, ob nach dem Speichern noch welche stehen.
+- **Veröffentlichungsstand:** `blp_published` vergleicht die Speicherzeiten von Prozessen, Geschäftsobjekten, Tabs, Rollen, Suchprofilen, Triggern, Auswahlbaum und Feldverwaltung mit der letzten Veröffentlichung am Client-Dienst und nennt, was danach gespeichert wurde (`stand`, `jeArt`, `bausteine`); `pruefen: false` zeigt nur die Projekte. Module und Datenabfragen prüft es nicht. Befund: Beim Speichern eines Tabs speichert der Dienst alle Rollen mit.
+- Offline-Test um `verschieben` erweitert (66 Prüfungen).
+- **Desktop-Plug-ins und Smart Search:** `blp_desktop_plugins` listet installierte Plug-ins mit Designer-Konfigurationsrouten. `blp_smartsearch_commands` zeigt Befehle, Plug-in-IDs, Optionen und Pfade zur Bearbeitung über `blp_change`.
+- `blp_module_install` importiert lokale `.mod`-Pakete nach Vorschau und Freigabe, sichert ein vorhandenes Paket und vergleicht den anschließenden Download per SHA-256.
+- **Zeitplan-Trigger:** `blp_triggers` listet die Trigger mit Prozess, Schalter und Zeitplan als Satz (z. B. „woechentlich Mo-Sa, 06:00-17:00, alle 10 Minuten“), mit `trigger` einen Trigger mit Rohzeitplan, Beschreibung und Pfaden zum Ändern.
+- `blp_create_trigger` legt einen Trigger an (zweistufig, `PUT triggermanager`): täglich oder wöchentlich mit Wochentagen („Mo-Sa“, „Mo,Mi,Fr“), Zeitfenster, Wiederholung in Sekunden (ab 30), Minuten oder Stunden, `aktiv` Pflicht. Vorschau mit dem ganzen Rumpf, Warnung, wenn schon ein Trigger denselben Prozess startet; vorher wird die Triggerliste gesichert.
+- `blp_change` und `blp_read_path` mit `baustein: triggermanager` (`objekt` = Triggername), z. B. `enabled` oder `schedule/repeat/every`. Geprüft wird vor dem Speichern (Art, Einheit, Uhrzeiten, wöchentlich ohne Tag). Speicherweg wie bei Prozessen (checkout, speichern, commit), erprobt auf Test.
+- `test-offline.ps1`: Offline-Tests ohne BLP und Zugangsdaten (Zeitplan bauen und lesen, Prüfung, Werkzeugliste, Start ohne Konfiguration).
+- `docs/BLP-API.md`: `triggermanager` mit Feldern und Zahlenwerten.
+
 ## 0.9.0 – 2026-11-12
 
 - **Laufberichte:** `blp_reports` liest den Berichtsdienst des BLP. Ohne `bericht` eine Übersicht für einen Zeitraum (`seit`/`bis`: `05:40`, `2026-11-12 05:40`, `4h`, `2d`): Läufe je Prozess mit Status, Kind-Läufe, die nicht `Done` sind, auffällige Läufe mit `transaction_id`, mit `alle` jeder Lauf. Mit `bericht` ein Einzelbericht: Benutzer, mitgegebene Parameter der Feldverwaltung, Schritte mit Baustein, Status, Ausgang und Laufzeit, Warn- und Fehlermeldungen, Kind-Läufe; mit `suche` alle Meldungen mit einem Text. Der Server umgeht die unzuverlässige Seitenzählung des Dienstes (sucht das Ende selbst, springt per Halbierung zum Zeitraum) und zeigt Ortszeit statt UTC.

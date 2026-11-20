@@ -6,7 +6,7 @@
 
 [![PowerShell 7](https://img.shields.io/badge/PowerShell-7.5%2B-5391fe)](#kompatibilität)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![30 Werkzeuge](https://img.shields.io/badge/Werkzeuge-30-2ea44f)](#werkzeuge)
+[![32 Werkzeuge](https://img.shields.io/badge/Werkzeuge-32-2ea44f)](#werkzeuge)
 [![Zweistufige Freigabe](https://img.shields.io/badge/%C3%84ndern-Vorschau%20%2B%20Freigabe-e36209)](#so-läuft-eine-änderung)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#kompatibilität)
@@ -135,13 +135,17 @@ Zugangsdaten stehen **nie** in der Konfiguration, sondern in der DPAPI-Datei aus
 | `blp_dataquery` | Datenabfragen mit Inhalt: SQL-Text, Feldzuordnung, Schalter, Quelle und Anmeldeprofil (SQL/OleDb), Teilabfragen und Spalten (GroupQueries), mit Pfaden zum Ändern; ohne `abfrage` die Übersicht je Add-in; Verbindungszeichenfolgen ausgeblendet |
 | `blp_selection` | Auswahlbaum des Clients (`client/selection`): Bereich › Dokument › Prozess › Felder, je Bereich ob sortiert |
 | `blp_images` | Bildpaket: Container mit Bildern; mit `bild` auch, wo ein Bild benutzt wird |
-| `blp_published` | letzte Veröffentlichung am Client-Dienst |
+| `blp_published` | letzte Veröffentlichung am Client-Dienst und welche Bausteine danach gespeichert wurden (Prozesse, Objekte, Tabs, Rollen, Suchprofile, Trigger, Auswahlbaum, Feldverwaltung), also noch nicht in der Sidebar sind |
 | `blp_read_path` | Wert an einem Pfad lesen (zum Vorbereiten einer Änderung) |
 | `blp_get` | beliebiger lesender GET am Projekt- oder Client-Dienst (nur Pfade, keine fremden Adressen) |
 | `blp_process_export` | Prozess als [Bauplan](#bauplan) (JSON); große Baupläne als Datei. Ohne `prozess`: Liste der Bausteine (Prozessoren aller Module) mit ihren Ausgängen |
 | `blp_modules` | Module mit Softwareversion und ihrer Modulkonfiguration im Projekt (Version, letzte Änderung, Parameter-Schlüssel und Größe, Sperre) |
+| `blp_desktop_plugins` | Installierte Desktop-Plug-ins mit Modul, IDs und Konfigurationsrouten für den Designer |
+| `blp_smartsearch_commands` | Befehle eines Smart-Search-Profils mit Optionen, Plug-in-Zuordnung und Pfaden für `blp_read_path` und `blp_change` |
+| `blp_module_install` | `.mod`-Paket nach Vorschau und Freigabe importieren, bisherigen Stand sichern und den Import per SHA-256 verifizieren |
 | `blp_module` | Modulkonfiguration eines Moduls, eingebettetes JSON ausgepackt. Kurzansicht für Validation (Dokumenttypen, Blöcke, Felder, Regeln) und AI.Foundation (Prompts, Modellprofile, Anbieter), sonst Gliederung; `voll` = alles, große Konfigurationen als Datei (maskiert) |
 | `blp_reports` | Laufberichte (Berichtsdienst): Läufe seit/bis je Prozess mit Status, Kind-Läufe, die nicht `Done` sind, auffällige Läufe mit `transaction_id`; mit `bericht` ein Einzelbericht (Benutzer, mitgegebene Parameter, Schritte mit Baustein, Status und Ausgang, Warn- und Fehlermeldungen, Kind-Läufe), mit `suche` alle Meldungen mit einem Text. Siehe [Laufberichte](#laufberichte) |
+| `blp_triggers` | Zeitplan-Trigger: welcher Prozess wann läuft (als Satz, z. B. „wöchentlich Mo-Sa, 06:00-17:00, alle 10 Minuten“), aktiv oder aus; mit `trigger` ein Trigger mit Zeitplan und Pfaden zum Ändern. Siehe [Zeitplan-Trigger](#zeitplan-trigger) |
 | `blp_search` | Text im ganzen Projekt suchen (Full Export: Prozesse, Objekte, Feldverwaltung, Rollen, Module, Datenabfragen, Zugangsdaten-Einträge, Richtlinien mit Service-Pools …), auch in eingebettetem JSON; je Treffer Bereich, Objekt, Pfad und Ausschnitt. Siehe [Suche im Projekt](#suche-im-projekt) |
 
 Namen findet der Server tolerant: ID, exakter Name oder Anzeigetext, dann „Name (Zusatz)“, dann Namensteil. Bei mehreren Treffern kommt die Liste zurück.
@@ -150,7 +154,7 @@ Namen findet der Server tolerant: ID, exakter Name oder Anzeigetext, dann „Nam
 
 | Werkzeug | Zweck |
 |---|---|
-| `blp_change` | Baustein gezielt ändern: Liste von `{pfad, wert, aktion}`. Freigegeben für `processengine`, `objectmanager`, `client/sidebar/tab/action`, `smartsearch`, `role`, `client/selection`, `fieldmanager` (Feldverwaltung, ohne `objekt`), `module` (siehe [Modulkonfiguration](#modulkonfiguration)), `dataquery` (siehe [Datenabfragen](#datenabfragen)) |
+| `blp_change` | Baustein gezielt ändern: Liste von `{pfad, wert, aktion}`. Freigegeben für `processengine`, `objectmanager`, `client/sidebar/tab/action`, `smartsearch`, `role`, `client/selection`, `fieldmanager` (Feldverwaltung, ohne `objekt`), `module` (siehe [Modulkonfiguration](#modulkonfiguration)), `dataquery` (siehe [Datenabfragen](#datenabfragen)), `triggermanager` (siehe [Zeitplan-Trigger](#zeitplan-trigger)). Aktionen `setzen`, `anhaengen`, `entfernen`, `sortieren` und `verschieben` (Element an Position, `anfang`, `ende`, `{vor: …}` oder `{nach: …}`); beim Entfernen einer Kachel nennt die Vorschau ihre Rolleneinträge |
 | `blp_module_restore` | Sicherung einer Modulkonfiguration oder der Datenabfragen eines Add-ins zurückspielen (der Stand davor wird wieder gesichert) |
 | `blp_create_process` | neuer Prozess als Kopie eines vorhandenen, optional mit Pfad-Änderungen an der Kopie |
 | `blp_create_tab` | neuer, leerer Sidebar-Tab |
@@ -158,6 +162,7 @@ Namen findet der Server tolerant: ID, exakter Name oder Anzeigetext, dann „Nam
 | `blp_process_build` | Prozess aus einem Bauplan bauen: neu, als Kopie unter neuem Namen (`name`) oder als Ersatz eines vorhandenen (`prozess`); auch eine Sicherung zurückspielen |
 | `blp_create_object` | neues Geschäftsobjekt, leer mit `felder` oder als Kopie einer `vorlage` (Felder, Füllregeln, Suche, ohne Kacheln) |
 | `blp_image_upload` | PNGs ins Bildpaket laden und optional gleich an Kachel (24/32/64 px) oder Tab (24 px) hängen |
+| `blp_create_trigger` | neuer Zeitplan-Trigger für einen Prozess: täglich oder wöchentlich, Zeitfenster, Wiederholung, aus oder an; Triggerliste wird vorher gesichert |
 | `blp_image_remove` | Bilder aus einem Container nehmen; verweigert, solange sie noch benutzt werden; `endgueltig` löscht auch die Datei |
 
 Bewusst **nicht** dabei: Veröffentlichen, Löschen ganzer Bausteine.
@@ -177,6 +182,12 @@ Anders als bei den übrigen Bausteinen:
 - Die Konfiguration gilt für das ganze Projekt, also für alle Prozesse, die das Modul benutzen.
 - Werte mit `***` werden abgelehnt: Wer eine maskierte Antwort abschreibt und zurückschreibt, würde Zugangsdaten oder Schlüssel zerstören. Pfad so eng setzen, dass nur das Geänderte drinsteht.
 - Konfigurationen mit Schlüsseln, die sich nur in Groß-/Kleinschreibung unterscheiden (z. B. Office), zeigt `blp_module` an, ändern geht dort nur im Designer.
+
+### Desktop-Plug-ins und Smart Search
+
+`blp_desktop_plugins` zeigt die installierten Plug-ins und welche davon ein Konfigurationsformular im Designer haben. `blp_smartsearch_commands` mit `profil` und optional `befehl` zeigt die Menübefehle und ihre Pfade. Parameter liest `blp_read_path` und ändert `blp_change` mit `baustein: smartsearch`. Mit `/#/` geht es in einen als JSON-Text gespeicherten Parameterwert.
+
+`blp_module_install` mit `datei` importiert ein lokales `.mod`-Paket. Die Vorschau nennt die bisherige und die neue Version. Beim Ersetzen legt das Werkzeug eine Kopie des bisherigen Pakets für einen späteren Rückimport ab. Es prüft den neuen Download gegen die SHA-256-Prüfsumme der lokalen Datei. Der Designer zeigt den Import nach dem Neuladen. Die Sidebar erhält das Modul nach dem Veröffentlichen.
 
 ### Datenabfragen
 
@@ -204,6 +215,19 @@ blp_reports  bericht: "<transaction_id>", suche: "srv-alt"
 - Der Einzelbericht nennt bei `Warning` ohne Warnmeldung die Schritte, die ohne Ausgang endeten – das ist meist der Grund.
 - Der Bericht enthält die Zugangsdaten der Message-Queue; sie erscheinen wie alle Geheimnisse als `***`. Berichte bleiben 28 Tage.
 - Die Seitenzählung des Dienstes stimmt nicht verlässlich (`pages`, `has_next_page`); der Server sucht das Ende selbst und springt per Halbierung zum Zeitraum.
+
+### Zeitplan-Trigger
+
+Trigger starten Serverprozesse nach Zeitplan (im Designer: *Trigger*). `blp_triggers` zeigt sie mit Prozess und Zeitplan als Satz, `blp_create_trigger` legt einen an, `blp_change` mit `baustein: triggermanager` ändert, schaltet ein oder aus.
+
+```text
+blp_triggers
+blp_create_trigger  name: "Belegabgleich", prozess: "Belegabgleich", wochentage: "Mo-Sa", von: "06:00", bis: "17:00", alle: 10, aktiv: true
+blp_change  baustein: "triggermanager", objekt: "Belegabgleich", aenderungen: [{pfad: "enabled", wert: false}]
+blp_change  baustein: "triggermanager", objekt: "Belegabgleich", aenderungen: [{pfad: "schedule/repeat/every", wert: 15}]
+```
+
+Wie alles andere wirkt ein Trigger erst nach dem Veröffentlichen. Ob er läuft, zeigt `blp_reports` mit `prozess`. Monatliche Zeitpläne und Löschen bleiben im Designer. Startet schon ein anderer Trigger denselben Prozess, warnt die Vorschau.
 
 ### Suche im Projekt
 
@@ -307,7 +331,13 @@ Format, Beispiele und Fallen: [`docs/USAGE.md`](docs/USAGE.md#bauplan).
 
 ## Entwickeln
 
-Der Server besteht aus `blp-mcp.ps1` (Protokoll, Anmeldung, Lesewerkzeuge) und den per Dot-Sourcing eingebundenen Dateien `blp-mcp-konfig.ps1`, `blp-mcp-aendern.ps1` (Pfadsprache, Ändern, Neuanlage), `blp-mcp-bilder.ps1` (Bildpaket), `blp-mcp-bauen.ps1` (Bauplan, Geschäftsobjekt anlegen), `blp-mcp-module.ps1` (Modulkonfiguration, Datenabfragen) und `blp-mcp-berichte.ps1` (Laufberichte, Suche im Projekt). Testlauf ohne MCP-Client:
+Der Server besteht aus `blp-mcp.ps1` (Protokoll, Anmeldung, Lesewerkzeuge) und den per Dot-Sourcing eingebundenen Dateien `blp-mcp-konfig.ps1`, `blp-mcp-aendern.ps1` (Pfadsprache, Ändern, Neuanlage), `blp-mcp-bilder.ps1` (Bildpaket), `blp-mcp-bauen.ps1` (Bauplan, Geschäftsobjekt anlegen), `blp-mcp-module.ps1` (Modulkonfiguration, Datenabfragen) und `blp-mcp-berichte.ps1` (Laufberichte, Suche im Projekt) und `blp-mcp-trigger.ps1` (Zeitplan-Trigger). Offline-Tests (kein BLP, keine Zugangsdaten nötig):
+
+```powershell
+pwsh -NoProfile -File test-offline.ps1
+```
+
+Testlauf gegen einen BLP ohne MCP-Client:
 
 ```powershell
 python -I test-blp-mcp.py beispiel-aufrufe.json
